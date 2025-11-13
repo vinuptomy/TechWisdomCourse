@@ -204,7 +204,7 @@ export const getCourseDetails = async (courseId: string): Promise<Course> => {
         .from('modules')
         .select('*, chapters(*, downloads:chapter_downloads(download:downloads(*)))')
         .eq('course_id', courseId)
-        .order('position', { foreignTable: 'modules', ascending: true })
+        .order('position', { ascending: true })
         .order('position', { foreignTable: 'chapters', ascending: true });
 
     if (modulesError) throw modulesError;
