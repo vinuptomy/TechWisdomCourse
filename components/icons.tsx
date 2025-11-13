@@ -26,3 +26,4 @@ export const MenuIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M3 12h
 export const SpinnerIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M21 12a9 9 0 1 1-6.219-8.56" {...props}/>;
 export const CheckIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M20 6 9 17l-5-5" {...props} />;
 export const RocketIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M12 2L9 7v10c0 .55.45 1 1 1h4c.55 0 1-.45 1-1V7l-3-5z", "M9 13L5 17h14l-4-4H9z", "M10 19h4v4h-4z"]} {...props}/>;
+export const AdminIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...props}/>;

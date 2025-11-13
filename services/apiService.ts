@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { UserProfile, Post, Course, Download, UserPlan, Profile } from '../types';
+import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment } from '../types';
 
 // --- HELPER FUNCTIONS ---
 
@@ -96,8 +96,6 @@ export const onAuthStateChange = (callback: (user: UserProfile | null) => void):
 export const signIn = async (email: string, password: string): Promise<void> => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    // The onAuthStateChange listener in App.tsx handles fetching the profile and updating app state.
-    // Attempting to fetch the profile here can cause a race condition.
 };
 
 export const signUp = async (email: string, password: string, name: string): Promise<void> => {
@@ -113,8 +111,6 @@ export const signUp = async (email: string, password: string, name: string): Pro
     });
 
     if (error) throw error;
-    // The onAuthStateChange listener handles fetching the profile and updating the app state.
-    // We don't need to return the user from here, as the session might not be immediately active.
 };
 
 
@@ -125,35 +121,41 @@ export const signOut = async (): Promise<void> => {
 
 // --- DATABASE API ---
 
-export const getPosts = async (): Promise<Post[]> => {
-    const { data, error } = await supabase
-        .from('posts')
-        .select(`
-            *,
-            author:profiles (id, name, avatar_url)
-        `)
-        .order('created_at', { ascending: false });
+export const getPosts = async (communityId: string): Promise<Post[]> => {
+    const { data, error } = await supabase.rpc('get_posts_with_details', {
+        community_id_filter: communityId
+    });
 
-    if (error) throw error;
-    return data as any;
+    if (error) {
+        console.error("Error fetching posts with details:", error);
+        throw error;
+    }
+    return data as Post[];
 };
 
-export const createPost = async (content: string): Promise<Post> => {
+export const createPost = async (content: string, communityId: string): Promise<Post> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User must be logged in to create a post.");
 
-    const { data, error } = await supabase
+    const { data: newPost, error } = await supabase
         .from('posts')
-        .insert({ content, author_id: user.id })
-        .select(`
-            *,
-            author:profiles (id, name, avatar_url)
-        `)
+        .insert({ content, author_id: user.id, community_id: communityId })
+        .select()
         .single();
 
     if (error) throw error;
-    return data as any;
+
+    // The new post doesn't have the computed fields, so we need to fetch it again
+    // This is a small trade-off for not making the RPC function more complex
+    const { data: detailedPost, error: rpcError } = await supabase.rpc('get_posts_with_details', {
+        community_id_filter: communityId
+    }).eq('id', newPost.id).single();
+    
+    if (rpcError) throw rpcError;
+
+    return detailedPost as Post;
 };
+
 
 export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => {
     let query = supabase.from('courses').select('*, lessons(*)');
@@ -186,8 +188,6 @@ export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<Us
         throw error;
     }
     
-    // We need the user's email, which is not in the profiles table.
-    // Fetch the session directly to get the email without a redundant profile fetch.
     const { data: { session } } = await supabase.auth.getSession();
     if (!session || session.user.id !== userId) {
         console.error("User is not authenticated or is trying to update another user's plan.");
@@ -195,4 +195,104 @@ export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<Us
     }
 
     return formatProfile(updatedProfile, session.user.email!);
+};
+
+
+// --- COMMUNITY API ---
+
+export const getCommunities = async (): Promise<Community[]> => {
+    const { data, error } = await supabase
+        .from('communities')
+        .select('*')
+        .order('name', { ascending: true });
+
+    if (error) throw error;
+    return data;
+};
+
+export const createCommunity = async (
+    { name, description, is_premium }: { name: string; description: string; is_premium: boolean },
+    imageFile: File
+): Promise<Community> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User must be logged in.");
+
+    const fileExt = imageFile.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `community_images/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, imageFile);
+
+    if (uploadError) {
+        console.error("Storage upload error:", uploadError);
+        throw uploadError;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+
+    const { data, error: insertError } = await supabase
+        .from('communities')
+        .insert({
+            name,
+            description,
+            is_premium,
+            image_url: publicUrl
+        })
+        .select()
+        .single();
+
+    if (insertError) {
+        console.error("DB insert error:", insertError);
+        throw insertError;
+    }
+
+    return data;
+};
+
+// --- COMMENTS & LIKES API ---
+
+export const getCommentsForPost = async (postId: string): Promise<Comment[]> => {
+    const { data, error } = await supabase
+        .from('comments')
+        .select('*, author:profiles(id, name, avatar_url)')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return data as any;
+};
+
+export const addCommentToPost = async (postId: string, content: string): Promise<Comment> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User must be logged in to comment.");
+
+    const { data, error } = await supabase
+        .from('comments')
+        .insert({ post_id: postId, content, author_id: user.id })
+        .select('*, author:profiles(id, name, avatar_url)')
+        .single();
+
+    if (error) throw error;
+    return data as any;
+};
+
+export const toggleLikeOnPost = async (postId: string, userId: string, hasLiked: boolean) => {
+    if (hasLiked) {
+        // User has already liked, so remove the like
+        const { error } = await supabase
+            .from('post_likes')
+            .delete()
+            .match({ post_id: postId, user_id: userId });
+        if (error) throw error;
+    } else {
+        // User has not liked, so add a like
+        const { error } = await supabase
+            .from('post_likes')
+            .insert({ post_id: postId, user_id: userId });
+        if (error) throw error;
+    }
 };

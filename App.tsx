@@ -9,6 +9,7 @@ import { ClassroomView } from './components/ClassroomView';
 import { CourseDetailView } from './components/CourseDetailView';
 import { DownloadsView } from './components/DownloadsView';
 import { SettingsView } from './components/SettingsView';
+import { AdminView } from './components/AdminView';
 import { AiAssistant } from './components/AiAssistant';
 import { AiIcon } from './components/icons';
 
@@ -57,6 +58,8 @@ export default function App() {
                 return <DownloadsView />;
             case 'settings':
                  return <SettingsView user={currentUser} />;
+            case 'admin':
+                 return <AdminView user={currentUser} />;
             default:
                 return <CommunityView currentUser={currentUser}/>;
         }
@@ -76,7 +79,7 @@ export default function App() {
 
     return (
         <div className="min-h-screen bg-background">
-            <Sidebar currentView={currentView} setView={setView} />
+            <Sidebar currentView={currentView} setView={setView} user={currentUser} />
             <div className="lg:pl-64">
                 <Header user={currentUser} />
                 <main className="p-6 pt-24">

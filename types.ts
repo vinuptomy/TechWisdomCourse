@@ -1,4 +1,5 @@
 export type UserPlan = 'free' | 'premium';
+export type UserRole = 'member' | 'admin';
 
 // Represents the data structure in the 'profiles' table
 export interface Profile {
@@ -6,6 +7,7 @@ export interface Profile {
   name: string;
   avatar_url: string;
   plan: UserPlan;
+  role: UserRole;
   stripe_customer_id?: string;
 }
 
@@ -21,15 +23,27 @@ export interface AuthorProfile {
   avatar_url: string;
 }
 
-// Corresponds to the 'posts' table
+// Corresponds to the data returned by our custom 'get_posts_with_details' function
 export interface Post {
   id: string;
   author_id: string;
-  author: AuthorProfile | null; // Joined author data from 'profiles'
+  author: AuthorProfile;
   content: string;
   created_at: string;
-  likes: number;
+  likes_count: number;
   comments_count: number;
+  community_id: string;
+  user_has_liked: boolean;
+}
+
+// Corresponds to the 'comments' table, with joined author data
+export interface Comment {
+  id: string;
+  content: string;
+  created_at: string;
+  author_id: string;
+  post_id: string;
+  author: AuthorProfile;
 }
 
 // Corresponds to the 'lessons' table
@@ -58,7 +72,16 @@ export interface Download {
   file_url: string;
 }
 
-export type View = 'community' | 'classroom' | 'downloads' | 'settings';
+export interface Community {
+  id: string;
+  created_at: string;
+  name: string;
+  description: string;
+  image_url: string;
+  is_premium: boolean;
+}
+
+export type View = 'community' | 'classroom' | 'downloads' | 'settings' | 'admin';
 
 export interface AiChatMessage {
   role: 'user' | 'model';
