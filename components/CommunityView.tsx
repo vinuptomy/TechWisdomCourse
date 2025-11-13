@@ -40,14 +40,13 @@ export const CommunityView: FC<{currentUser: UserProfile}> = ({currentUser}) => 
     const [newPostContent, setNewPostContent] = useState('');
     const [isPosting, setIsPosting] = useState(false);
 
-    const fetchPosts = async () => {
-        setLoading(true);
-        const fetchedPosts = await getPosts();
-        setPosts(fetchedPosts);
-        setLoading(false);
-    };
-
     useEffect(() => {
+        const fetchPosts = async () => {
+            setLoading(true);
+            const fetchedPosts = await getPosts();
+            setPosts(fetchedPosts);
+            setLoading(false);
+        };
         fetchPosts();
     }, []);
 
@@ -55,9 +54,10 @@ export const CommunityView: FC<{currentUser: UserProfile}> = ({currentUser}) => 
         if (!newPostContent.trim()) return;
         setIsPosting(true);
         try {
-            await createPost(newPostContent);
+            const newPost = await createPost(newPostContent);
             setNewPostContent('');
-            await fetchPosts(); // Refresh posts list
+            // Prepend the new post to the list for an instant update, avoiding a full refetch.
+            setPosts(currentPosts => [newPost, ...currentPosts]);
         } catch (error: any) {
             console.error("Failed to create post:", error);
             alert(`Could not create post: ${error.message}`);

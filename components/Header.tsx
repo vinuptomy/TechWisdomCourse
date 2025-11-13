@@ -3,13 +3,13 @@ import type { UserProfile } from '../types';
 import { signOut } from '../services/apiService';
 import { MenuIcon, LogoutIcon } from './icons';
 
-export const Header: FC<{ user: UserProfile; onLogout: () => void }> = ({ user, onLogout }) => {
+export const Header: FC<{ user: UserProfile }> = ({ user }) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
     const handleSignOutClick = async () => {
         await signOut();
-        onLogout();
+        // The onAuthStateChange listener in App.tsx will handle all UI updates.
     };
 
     // Close menu when clicking outside

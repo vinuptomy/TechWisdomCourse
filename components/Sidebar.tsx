@@ -12,7 +12,7 @@ export const Sidebar: FC<{ currentView: View; setView: (view: View) => void }> =
 
     return (
         <aside className="bg-surface w-64 p-6 fixed top-0 left-0 h-full border-r border-border hidden lg:flex flex-col z-40">
-            <h1 className="text-2xl font-bold text-text-primary mb-12">CourseSphere</h1>
+            <h1 className="text-2xl font-bold text-text-primary mb-12">Tech Wisdom</h1>
             <nav className="flex flex-col gap-2">
                 {navItems.map(item => (
                     <button

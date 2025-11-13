@@ -42,7 +42,7 @@ export const AiAssistant: FC<{ isOpen: boolean; onClose: () => void }> = ({ isOp
                 <header className="p-4 border-b border-border flex justify-between items-center">
                     <div className="flex items-center gap-3">
                         <AiIcon className="text-primary"/>
-                        <h3 className="font-bold text-lg" id="ai-assistant-title">CourseSphere AI</h3>
+                        <h3 className="font-bold text-lg" id="ai-assistant-title">Tech Wisdom AI</h3>
                     </div>
                     <button onClick={onClose} className="text-text-secondary hover:text-text-primary" aria-label="Close AI Assistant">
                         <CloseIcon/>

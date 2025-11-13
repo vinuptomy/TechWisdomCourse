@@ -1,18 +1,12 @@
 import { supabase } from './supabaseClient';
-import type { UserProfile, Post, Course, Download, UserPlan, Lesson } from '../types';
-import { Session } from '@supabase/supabase-js';
+import type { UserProfile, Post, Course, Download, UserPlan, Profile } from '../types';
 
 // --- HELPER FUNCTIONS ---
 
-const formatProfile = (data: any): UserProfile | null => {
-    if (!data) return null;
+const formatProfile = (profile: Profile, email: string): UserProfile => {
     return {
-        id: data.id,
-        name: data.name,
-        email: data.email, // This will be populated from auth.user
-        avatar_url: data.avatar_url,
-        plan: data.plan,
-        stripe_customer_id: data.stripe_customer_id,
+        ...profile,
+        email,
     };
 };
 
@@ -32,19 +26,19 @@ export const getSession = async (): Promise<UserProfile | null> => {
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .maybeSingle();
+        .maybeSingle<Profile>();
     
     if (profileError) {
         console.error('Error fetching profile:', profileError.message);
         return null;
     }
 
-    // If profileData is null (no profile found), we must return null before trying to spread it.
+    // If profileData is null (no profile found), we must return null.
     if (!profileData) {
         return null;
     }
 
-    return formatProfile({ ...profileData, email: session.user.email });
+    return formatProfile(profileData, session.user.email!);
 };
 
 export const onAuthStateChange = (callback: (user: UserProfile | null) => void): (() => void) => {
@@ -55,7 +49,7 @@ export const onAuthStateChange = (callback: (user: UserProfile | null) => void):
                 .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
-                .maybeSingle();
+                .maybeSingle<Profile>();
 
             if (profileError) {
                 console.error('Error fetching profile on auth change:', profileError.message);
@@ -65,27 +59,28 @@ export const onAuthStateChange = (callback: (user: UserProfile | null) => void):
 
             if (profileData) {
                 // Profile exists, format and return it.
-                callback(formatProfile({ ...profileData, email: session.user.email }));
+                callback(formatProfile(profileData, session.user.email!));
             } else {
                 // Profile does not exist, but the user is authenticated.
                 // This can happen if the DB trigger failed. Let's create a profile now.
                 console.warn(`Profile not found for user ${session.user.id}. Creating a new one.`);
+                const userName = session.user.user_metadata?.name || 'New User';
                 const { data: newProfile, error: insertError } = await supabase
                     .from('profiles')
                     .insert({
                         id: session.user.id,
-                        name: session.user.user_metadata?.name || 'New User',
-                        avatar_url: session.user.user_metadata?.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${session.user.email}`,
+                        name: userName,
+                        avatar_url: session.user.user_metadata?.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(userName)}`,
                     })
                     .select()
-                    .single();
+                    .single<Profile>();
                 
                 if (insertError) {
                     console.error('Error creating profile for authenticated user:', insertError.message);
                     callback(null);
                 } else {
                     // Successfully created profile, format and return it.
-                    callback(formatProfile({ ...newProfile, email: session.user.email }));
+                    callback(formatProfile(newProfile, session.user.email!));
                 }
             }
         } else {
@@ -112,7 +107,7 @@ export const signUp = async (email: string, password: string, name: string): Pro
         options: {
             data: {
                 name: name,
-                avatar_url: `https://picsum.photos/seed/${email}/100/100`,
+                avatar_url: `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name)}`,
             }
         }
     });
@@ -143,15 +138,21 @@ export const getPosts = async (): Promise<Post[]> => {
     return data as any;
 };
 
-export const createPost = async (content: string): Promise<void> => {
+export const createPost = async (content: string): Promise<Post> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User must be logged in to create a post.");
 
-    const { error } = await supabase
+    const { data, error } = await supabase
         .from('posts')
-        .insert({ content, author_id: user.id });
+        .insert({ content, author_id: user.id })
+        .select(`
+            *,
+            author:profiles (id, name, avatar_url)
+        `)
+        .single();
 
     if (error) throw error;
+    return data as any;
 };
 
 export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => {
@@ -173,12 +174,12 @@ export const getDownloads = async (): Promise<Download[]> => {
 };
 
 export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<UserProfile | null> => {
-     const { data, error } = await supabase
+     const { data: updatedProfile, error } = await supabase
         .from('profiles')
         .update({ plan: plan })
         .eq('id', userId)
         .select()
-        .single();
+        .single<Profile>();
     
     if (error) {
         console.error("Error updating user plan:", error);
@@ -186,8 +187,12 @@ export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<Us
     }
     
     // We need the user's email, which is not in the profiles table.
-    const sessionUser = await getSession();
-    if (!sessionUser) return null;
+    // Fetch the session directly to get the email without a redundant profile fetch.
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session || session.user.id !== userId) {
+        console.error("User is not authenticated or is trying to update another user's plan.");
+        return null;
+    }
 
-    return formatProfile({ ...data, email: sessionUser.email });
+    return formatProfile(updatedProfile, session.user.email!);
 };

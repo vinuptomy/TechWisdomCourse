@@ -1,11 +1,13 @@
 import React, { useState, FC, useEffect } from 'react';
 import { signIn, signUp } from '../services/apiService';
+import { SpinnerIcon, CheckIcon, RocketIcon } from './icons';
 
 const PasswordStrengthMeter: FC<{ strength: number }> = ({ strength }) => {
     const strengthLevels = [
-        { label: 'Weak', color: 'bg-red-500' },
-        { label: 'Fair', color: 'bg-orange-500' },
-        { label: 'Good', color: 'bg-yellow-500' },
+        { label: 'Very Weak', color: 'bg-red-500' },
+        { label: 'Weak', color: 'bg-orange-500' },
+        { label: 'Fair', color: 'bg-yellow-500' },
+        { label: 'Good', color: 'bg-lime-500' },
         { label: 'Strong', color: 'bg-green-500' },
     ];
 
@@ -16,14 +18,26 @@ const PasswordStrengthMeter: FC<{ strength: number }> = ({ strength }) => {
             <div className="w-full bg-background rounded-full h-2">
                 <div 
                     className={`h-2 rounded-full transition-all duration-300 ${level.color}`} 
-                    style={{ width: `${((strength + 1) / 4) * 100}%` }}
+                    style={{ width: `${((strength + 1) / 5) * 100}%` }}
                 ></div>
             </div>
-            <span className="text-xs text-text-secondary w-14 text-right">{level.label}</span>
+            <span className="text-xs text-text-secondary w-20 text-right">{level.label}</span>
         </div>
     );
 };
 
+const Captcha: FC<{ isVerified: boolean; onVerify: () => void; isVerifying: boolean;}> = ({ isVerified, onVerify, isVerifying }) => (
+    <div 
+        onClick={onVerify} 
+        className={`flex items-center gap-4 p-3 bg-background rounded-lg border ${isVerified ? 'border-green-500' : 'border-border'} transition-colors cursor-pointer`}
+    >
+        <div className="w-6 h-6 rounded border-2 border-border flex items-center justify-center bg-surface flex-shrink-0">
+            {isVerifying && <SpinnerIcon className="animate-spin" />}
+            {isVerified && !isVerifying && <CheckIcon className="text-green-500" />}
+        </div>
+        <span className="text-text-primary">I'm not a robot</span>
+    </div>
+);
 
 export const Auth: FC = () => {
     const [isSigningUp, setIsSigningUp] = useState(false);
@@ -35,26 +49,29 @@ export const Auth: FC = () => {
     const [showConfirmationMessage, setShowConfirmationMessage] = useState(false);
     const [passwordStrength, setPasswordStrength] = useState(0);
 
-    const [captcha, setCaptcha] = useState({ num1: 0, num2: 0, answer: '' });
+    const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
+    const [isVerifyingCaptcha, setIsVerifyingCaptcha] = useState(false);
 
-    const generateCaptcha = () => {
-        setCaptcha({
-            num1: Math.floor(Math.random() * 10) + 1,
-            num2: Math.floor(Math.random() * 10) + 1,
-            answer: ''
-        });
-    };
+    const resetAuthState = () => {
+        setError('');
+        setIsCaptchaVerified(false);
+        setIsVerifyingCaptcha(false);
+        setPasswordStrength(0);
+        setEmail('');
+        setPassword('');
+        setName('');
+    }
     
     useEffect(() => {
-        generateCaptcha();
+        resetAuthState();
     }, [isSigningUp]);
-
 
     const checkPasswordStrength = (pass: string) => {
         let score = 0;
-        if (pass.length > 7) score++;
+        if (pass.length > 8) score++;
         if (/\d/.test(pass)) score++;
         if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score++;
+        if (/[!@#$%^&*(),.?":{}|<>]/.test(pass)) score++;
         setPasswordStrength(score);
     };
 
@@ -66,19 +83,26 @@ export const Auth: FC = () => {
         }
     };
 
+    const handleCaptchaVerify = () => {
+        if (isCaptchaVerified || isVerifyingCaptcha) return;
+        setIsVerifyingCaptcha(true);
+        setTimeout(() => {
+            setIsCaptchaVerified(true);
+            setIsVerifyingCaptcha(false);
+        }, 1200);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        if (parseInt(captcha.answer, 10) !== captcha.num1 + captcha.num2) {
-            setError('Incorrect CAPTCHA answer. Please try again.');
-            generateCaptcha();
+        if (!isCaptchaVerified) {
+            setError('Please complete the CAPTCHA verification.');
             return;
         }
 
-        if (isSigningUp && passwordStrength < 2) {
-            setError('Password is too weak. Please choose a stronger password.');
+        if (isSigningUp && passwordStrength < 4) {
+            setError('Password is not strong enough. It must be over 8 characters and include uppercase, lowercase, a number, and a special character.');
             return;
         }
 
@@ -90,9 +114,9 @@ export const Auth: FC = () => {
                 setShowConfirmationMessage(true);
             } else {
                 await signIn(email, password);
-                // The onAuthStateChange listener in App.tsx will handle the login
             }
         } catch (err: any) {
+            resetAuthState();
             if (err.message.toLowerCase().includes('email not confirmed')) {
                  setError('Email not confirmed. Please check your inbox for a verification link.');
             } else if (err.message.toLowerCase().includes("could not find table 'public.profiles'")) {
@@ -100,7 +124,6 @@ export const Auth: FC = () => {
             } else {
                 setError(err.message);
             }
-            generateCaptcha();
         } finally {
             setLoading(false);
         }
@@ -108,71 +131,67 @@ export const Auth: FC = () => {
     
      if (showConfirmationMessage) {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-4">
-                <div className="w-full max-w-md p-8 text-center bg-surface rounded-2xl shadow-lg">
-                    <h1 className="text-3xl font-bold text-text-primary">Check Your Email</h1>
-                    <p className="mt-4 text-text-secondary">
-                        We've sent a confirmation link to <span className="font-semibold text-text-primary">{email}</span>.
-                        Please click the link in the email to activate your account.
-                    </p>
-                </div>
+            <div className="w-full max-w-md p-8 text-center bg-surface rounded-2xl shadow-lg animate-fade-in-fast">
+                <h1 className="text-3xl font-bold text-text-primary">Check Your Email</h1>
+                <p className="mt-4 text-text-secondary">
+                    We've sent a confirmation link to <span className="font-semibold text-text-primary">{email}</span>.
+                    Please click the link in the email to activate your account.
+                </p>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-background flex items-center justify-center p-4">
-            <div className="w-full max-w-md p-8 space-y-6 bg-surface rounded-2xl shadow-lg">
-                <div className="text-center">
-                    <h1 className="text-3xl font-bold text-text-primary tracking-tight">
-                        {isSigningUp ? 'Create an Account' : 'Welcome Back'}
-                    </h1>
-                    <p className="mt-2 text-text-secondary">
-                        {isSigningUp ? 'Join our community to start learning.' : 'Log in to continue your journey.'}
-                    </p>
+        <div className="w-full max-w-md p-8 space-y-6 bg-surface rounded-2xl shadow-lg">
+            <div className="text-center">
+                <h1 className="text-3xl font-bold text-text-primary tracking-tight">
+                    {isSigningUp ? 'Create an Account' : 'Welcome Back'}
+                </h1>
+                <p className="mt-2 text-text-secondary">
+                    {isSigningUp ? 'Join our community to start learning.' : 'Log in to continue your journey.'}
+                </p>
+            </div>
+            {error && <p className="text-center text-red-400 bg-red-500/10 p-3 rounded-lg">{error}</p>}
+            <form className="space-y-4" onSubmit={handleSubmit}>
+                {isSigningUp && (
+                    <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
+                )}
+                <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
+                <div>
+                    <input type="password" placeholder="Password" value={password} onChange={handlePasswordChange} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
+                    {isSigningUp && <PasswordStrengthMeter strength={passwordStrength} />}
                 </div>
-                {error && <p className="text-center text-red-400 bg-red-500/10 p-3 rounded-lg">{error}</p>}
-                <form className="space-y-4" onSubmit={handleSubmit}>
-                    {isSigningUp && (
-                        <input type="text" placeholder="Full Name" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
-                    )}
-                    <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
-                    <div>
-                        <input type="password" placeholder="Password" value={password} onChange={handlePasswordChange} required className="w-full bg-background border border-border rounded-lg p-3 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition" />
-                        {isSigningUp && <PasswordStrengthMeter strength={passwordStrength} />}
-                    </div>
 
-                    <div className="flex items-center gap-4 p-3 bg-background rounded-lg border border-border">
-                        <label htmlFor="captcha" className="text-text-secondary font-mono">
-                           {captcha.num1} + {captcha.num2} = ?
-                        </label>
-                        <input
-                            id="captcha"
-                            type="number"
-                            placeholder="Your answer"
-                            value={captcha.answer}
-                            onChange={e => setCaptcha({...captcha, answer: e.target.value})}
-                            required
-                            className="w-full bg-transparent text-text-primary placeholder-text-secondary focus:outline-none"
-                         />
-                    </div>
-                    
-                    <button type="submit" disabled={loading} className="w-full py-3 px-4 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background transition-all duration-200 disabled:bg-gray-500 disabled:cursor-not-allowed">
-                        {loading ? 'Processing...' : isSigningUp ? 'Sign Up' : 'Log In'}
-                    </button>
-                </form>
-                <p className="text-center text-sm text-text-secondary">
-                    {isSigningUp ? 'Already have an account?' : "Don't have an account?"}
-                    <button onClick={() => { setIsSigningUp(!isSigningUp); setError(''); }} className="font-semibold text-primary hover:underline ml-1">
-                        {isSigningUp ? 'Log In' : 'Sign Up'}
+                <Captcha 
+                    isVerified={isCaptchaVerified}
+                    isVerifying={isVerifyingCaptcha}
+                    onVerify={handleCaptchaVerify}
+                />
+                
+                <button type="submit" disabled={loading} className="w-full py-3 px-4 bg-primary text-white font-semibold rounded-lg shadow-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-background transition-all duration-200 disabled:bg-gray-500 disabled:cursor-not-allowed">
+                    {loading ? 'Processing...' : isSigningUp ? 'Create Account' : 'Log In'}
+                </button>
+            </form>
+            
+            {isSigningUp ? (
+                 <p className="text-center text-sm text-text-secondary">
+                    Already have an account?
+                    <button onClick={() => { setIsSigningUp(false); }} className="font-semibold text-primary hover:underline ml-1">
+                        Log In
                     </button>
                 </p>
-                 <div className="text-center text-xs text-text-secondary pt-4 border-t border-border">
-                    <p>For demo purposes:</p>
-                    <p>Premium: <span className="font-mono">premium@example.com</span> / <span className="font-mono">password</span></p>
-                    <p>Free: <span className="font-mono">free@example.com</span> / <span className="font-mono">password</span></p>
+            ) : (
+                <div className="text-center mt-6 pt-4 border-t border-border">
+                    <p className="text-text-secondary mb-3">New to Tech Wisdom?</p>
+                    <button 
+                        onClick={() => setIsSigningUp(true)} 
+                        className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-surface text-secondary font-semibold rounded-lg border border-secondary hover:bg-secondary/10 transition-all duration-200"
+                    >
+                       <RocketIcon className="w-5 h-5" />
+                       Join the Launch Pad!
+                    </button>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

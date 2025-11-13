@@ -1,20 +1,31 @@
 export type UserPlan = 'free' | 'premium';
 
-// Corresponds to the 'profiles' table in Supabase
-export interface UserProfile {
-  id: string; // Corresponds to auth.users.id
-  name:string;
-  email: string;
+// Represents the data structure in the 'profiles' table
+export interface Profile {
+  id: string;
+  name: string;
   avatar_url: string;
   plan: UserPlan;
   stripe_customer_id?: string;
+}
+
+// Represents the application's user model, combining auth data (email) and profile data
+export interface UserProfile extends Profile {
+  email: string;
+}
+
+// A slimmed-down profile for embedding in other data types like posts
+export interface AuthorProfile {
+  id: string;
+  name: string;
+  avatar_url: string;
 }
 
 // Corresponds to the 'posts' table
 export interface Post {
   id: string;
   author_id: string;
-  author: Pick<UserProfile, 'id' | 'name' | 'avatar_url'> | null; // Joined author data from 'profiles'
+  author: AuthorProfile | null; // Joined author data from 'profiles'
   content: string;
   created_at: string;
   likes: number;

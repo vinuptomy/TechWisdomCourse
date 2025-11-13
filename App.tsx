@@ -3,7 +3,7 @@ import type { UserProfile, Course, View } from './types';
 import { getSession, onAuthStateChange } from './services/apiService';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
-import { Auth } from './components/Auth';
+import { LandingPage } from './components/LandingPage';
 import { CommunityView } from './components/CommunityView';
 import { ClassroomView } from './components/ClassroomView';
 import { CourseDetailView } from './components/CourseDetailView';
@@ -41,10 +41,6 @@ export default function App() {
         return () => unsubscribe();
     }, []);
 
-    const handleLogout = () => {
-        // The onAuthStateChange listener will handle setting currentUser to null and resetting state
-    };
-
     const renderContent = () => {
         if (!currentUser) return null;
 
@@ -69,20 +65,20 @@ export default function App() {
     if (loadingSession) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <p className="text-text-secondary">Loading CourseSphere...</p>
+                <p className="text-text-secondary">Loading Tech Wisdom...</p>
             </div>
         );
     }
     
     if (!currentUser) {
-        return <Auth />;
+        return <LandingPage />;
     }
 
     return (
         <div className="min-h-screen bg-background">
             <Sidebar currentView={currentView} setView={setView} />
             <div className="lg:pl-64">
-                <Header user={currentUser} onLogout={handleLogout} />
+                <Header user={currentUser} />
                 <main className="p-6 pt-24">
                     {renderContent()}
                 </main>

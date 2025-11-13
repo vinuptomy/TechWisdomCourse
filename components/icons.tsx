@@ -18,13 +18,11 @@ export const LogoutIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M9 2
 export const AiIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M12 8V4H8", "M4 8h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z", "M2 14h2", "M20 14h2", "M15 13v2", "M9 13v2"]} {...props}/>;
 export const SendIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["m22 2-7 20-4-9-9-4 20-7z", "M22 2 11 13"]} {...props} />;
 export const CloseIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["m18 6-12 12", "m6 6 12 12"]} {...props}/>;
-// FIX: Converted the single path string into an array of strings for better parsing robustness.
-// The original format, while technically valid, can be brittle in some SVG renderers.
 export const LikeIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z", "M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"]} {...props}/>;
 export const CommentIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" {...props}/>;
 export const BackIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M19 12H5", "M12 19l-7-7 7-7"]} {...props}/>;
 export const SearchIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M10 10 m -7 0 a 7 7 0 1 0 14 0 a 7 7 0 1 0 -14 0", "m21 21-4.3-4.3"]} {...props}/>;
-// FIX: The original path string was syntactically incorrect, missing spaces between drawing commands.
-// This was causing the SVG renderer to fail and crash the application.
-// Split the commands into a string array for correctness and robustness.
 export const MenuIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M3 12h18", "M3 6h18", "M3 18h18"]} {...props}/>;
+export const SpinnerIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M21 12a9 9 0 1 1-6.219-8.56" {...props}/>;
+export const CheckIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M20 6 9 17l-5-5" {...props} />;
+export const RocketIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M12 2L9 7v10c0 .55.45 1 1 1h4c.55 0 1-.45 1-1V7l-3-5z", "M9 13L5 17h14l-4-4H9z", "M10 19h4v4h-4z"]} {...props}/>;
