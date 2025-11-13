@@ -340,12 +340,13 @@ export const createCommunity = async (
 // --- CLASSROOM API ---
 
 export const getClassrooms = async (searchTerm: string = ""): Promise<Classroom[]> => {
+    // FIX: Explicitly define the foreign key relationship to resolve ambiguity.
     let query = supabase
         .from('classrooms')
         .select(`
             *,
             course:courses(title),
-            community:communities(name)
+            community:communities!classrooms_primary_community_id_fkey(name)
         `);
 
     if (searchTerm) {
@@ -376,10 +377,10 @@ export const createClassroom = async (
 };
 
 export const getClassroomDetails = async (classroomId: string): Promise<{ classroom: Classroom, course: Course, communities: Community[] }> => {
-    // Fetch classroom, its course, and its primary community
+    // FIX: Explicitly define the foreign key relationship to resolve ambiguity.
     const { data: classroomData, error: classroomError } = await supabase
         .from('classrooms')
-        .select('*, course:courses(*), community:communities(*)')
+        .select('*, course:courses(*), community:communities!classrooms_primary_community_id_fkey(*)')
         .eq('id', classroomId)
         .single();
     if (classroomError) throw classroomError;
