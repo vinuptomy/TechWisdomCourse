@@ -3,28 +3,35 @@ import type { Post, UserProfile } from '../types';
 import { getPosts, createPost } from '../services/apiService';
 import { LikeIcon, CommentIcon } from './icons';
 
-const PostCard: FC<{ post: Post }> = ({ post }) => (
-    <div className="bg-surface rounded-xl p-6 border border-border">
-        <div className="flex items-center gap-3 mb-4">
-            <img src={post.author.avatar_url} alt={post.author.name} className="w-10 h-10 rounded-full" />
-            <div>
-                <p className="font-semibold text-text-primary">{post.author.name}</p>
-                <p className="text-xs text-text-secondary">{new Date(post.created_at).toLocaleString()}</p>
+const PostCard: FC<{ post: Post }> = ({ post }) => {
+    // FIX: Handle posts with null authors to prevent app crashes.
+    // This can happen if an author's profile is deleted but their posts remain.
+    const authorName = post.author?.name ?? 'Unknown Author';
+    const authorAvatar = post.author?.avatar_url ?? `https://api.dicebear.com/8.x/initials/svg?seed=${authorName}`;
+
+    return (
+        <div className="bg-surface rounded-xl p-6 border border-border">
+            <div className="flex items-center gap-3 mb-4">
+                <img src={authorAvatar} alt={authorName} className="w-10 h-10 rounded-full bg-background" />
+                <div>
+                    <p className="font-semibold text-text-primary">{authorName}</p>
+                    <p className="text-xs text-text-secondary">{new Date(post.created_at).toLocaleString()}</p>
+                </div>
+            </div>
+            <p className="text-text-primary mb-4 whitespace-pre-wrap">{post.content}</p>
+            <div className="flex items-center gap-6 text-text-secondary text-sm">
+                <button className="flex items-center gap-2 hover:text-primary transition-colors">
+                    <LikeIcon />
+                    <span>{post.likes} Likes</span>
+                </button>
+                <button className="flex items-center gap-2 hover:text-secondary transition-colors">
+                    <CommentIcon />
+                    <span>{post.comments_count} Comments</span>
+                </button>
             </div>
         </div>
-        <p className="text-text-primary mb-4 whitespace-pre-wrap">{post.content}</p>
-        <div className="flex items-center gap-6 text-text-secondary text-sm">
-            <button className="flex items-center gap-2 hover:text-primary transition-colors">
-                <LikeIcon />
-                <span>{post.likes} Likes</span>
-            </button>
-            <button className="flex items-center gap-2 hover:text-secondary transition-colors">
-                <CommentIcon />
-                <span>{post.comments_count} Comments</span>
-            </button>
-        </div>
-    </div>
-);
+    );
+};
 
 
 export const CommunityView: FC<{currentUser: UserProfile}> = ({currentUser}) => {

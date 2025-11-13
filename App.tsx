@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, FC } from 'react';
 import type { UserProfile, Course, View } from './types';
-import { getSession, onAuthStateChange, updateUserPlan } from './services/apiService';
+import { getSession, onAuthStateChange } from './services/apiService';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { Auth } from './components/Auth';
@@ -11,11 +11,6 @@ import { DownloadsView } from './components/DownloadsView';
 import { SettingsView } from './components/SettingsView';
 import { AiAssistant } from './components/AiAssistant';
 import { AiIcon } from './components/icons';
-
-// In a real app, this would be your Stripe publishable key
-const STRIPE_PUBLISHABLE_KEY = 'pk_test_51BTUDGJAJfZb9HEBwDgAbpr3k1tF2vJIsQCK1V2g3B4aRMOd2Xo58a1AnKn2Uplm5cMvPZGxQD3c3Iwy3ANglsY200tg2Ipf2C';
-// In a real app, this would come from your server/Stripe Dashboard
-const STRIPE_PREMIUM_PRICE_ID = 'price_1L3YQGJAJfZb9HEBf6Nru9gS'; 
 
 export default function App() {
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -50,71 +45,22 @@ export default function App() {
         // The onAuthStateChange listener will handle setting currentUser to null and resetting state
     };
 
-    const handleStripeCheckout = async () => {
-        if (!currentUser) return;
-
-        const stripe = (window as any).Stripe(STRIPE_PUBLISHABLE_KEY);
-        if (!stripe) {
-            alert("Stripe.js has not loaded. Please check your internet connection.");
-            return;
-        }
-
-        const { error } = await stripe.redirectToCheckout({
-            lineItems: [{ price: STRIPE_PREMIUM_PRICE_ID, quantity: 1 }],
-            mode: 'subscription',
-            successUrl: `${window.location.origin}?payment=success&user_id=${currentUser.id}`,
-            cancelUrl: window.location.origin,
-            customerEmail: currentUser.email,
-        });
-
-        if (error) {
-            console.error("Stripe Checkout error:", error);
-            alert(`An error occurred: ${error.message}`);
-        }
-    };
-    
-    // Effect to handle successful payment redirect from Stripe
-    useEffect(() => {
-        const handleSuccessfulPayment = async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('payment') === 'success') {
-                const userId = urlParams.get('user_id');
-                // The onAuthStateChange listener will eventually update the user,
-                // but we can call updateUserPlan for a more immediate UI update.
-                if (userId && currentUser?.id === userId && currentUser.plan === 'free') {
-                    const updatedUser = await updateUserPlan(userId, 'premium');
-                    if(updatedUser) {
-                        setCurrentUser(updatedUser); // Immediately refresh user state with premium plan
-                        alert("Payment successful! Your account has been upgraded to Premium.");
-                    }
-                }
-                // Clean up the URL
-                window.history.replaceState(null, '', window.location.pathname);
-            }
-        };
-
-        if(currentUser) {
-            handleSuccessfulPayment();
-        }
-    }, [currentUser]);
-
-
     const renderContent = () => {
         if (!currentUser) return null;
 
         if (selectedCourse) {
-            return <CourseDetailView course={selectedCourse} userPlan={currentUser.plan} onBack={() => setSelectedCourse(null)} />;
+            return <CourseDetailView course={selectedCourse} onBack={() => setSelectedCourse(null)} />;
         }
 
         switch (currentView) {
             case 'community':
                 return <CommunityView currentUser={currentUser} />;
             case 'classroom':
-                return <ClassroomView onSelectCourse={setSelectedCourse} />;
+                return <ClassroomView currentUser={currentUser} onSelectCourse={setSelectedCourse} />;
             case 'downloads':
-                return <DownloadsView userPlan={currentUser.plan} />;
+                return <DownloadsView />;
             case 'settings':
-                 return <SettingsView user={currentUser} onUpgrade={handleStripeCheckout} />;
+                 return <SettingsView user={currentUser} />;
             default:
                 return <CommunityView currentUser={currentUser}/>;
         }

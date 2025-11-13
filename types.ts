@@ -14,7 +14,7 @@ export interface UserProfile {
 export interface Post {
   id: string;
   author_id: string;
-  author: Pick<UserProfile, 'id' | 'name' | 'avatar_url'>; // Joined author data from 'profiles'
+  author: Pick<UserProfile, 'id' | 'name' | 'avatar_url'> | null; // Joined author data from 'profiles'
   content: string;
   created_at: string;
   likes: number;
