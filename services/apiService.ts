@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment } from '../types';
+import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment, AuthorProfile } from '../types';
 
 // --- HELPER FUNCTIONS ---
 
@@ -137,23 +137,36 @@ export const createPost = async (content: string, communityId: string): Promise<
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User must be logged in to create a post.");
 
-    const { data: newPost, error } = await supabase
+    // The RPC function `get_posts_with_details` joins the author's profile.
+    // To return a complete `Post` object without a second expensive RPC call,
+    // we first fetch the current user's profile.
+    const { data: authorProfile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, name, avatar_url')
+        .eq('id', user.id)
+        .single<AuthorProfile>();
+    
+    if (profileError || !authorProfile) {
+        throw new Error(profileError?.message || "User profile not found.");
+    }
+
+    const { data: newPostData, error: insertError } = await supabase
         .from('posts')
         .insert({ content, author_id: user.id, community_id: communityId })
-        .select()
+        .select('id, created_at, content, author_id, community_id')
         .single();
 
-    if (error) throw error;
+    if (insertError) throw insertError;
 
-    // The new post doesn't have the computed fields, so we need to fetch it again
-    // This is a small trade-off for not making the RPC function more complex
-    const { data: detailedPost, error: rpcError } = await supabase.rpc('get_posts_with_details', {
-        community_id_filter: communityId
-    }).eq('id', newPost.id).single();
-    
-    if (rpcError) throw rpcError;
-
-    return detailedPost as Post;
+    // Manually construct the full `Post` object to immediately update the UI.
+    // This is more efficient and fixes the previous invalid query.
+    return {
+        ...newPostData,
+        author: authorProfile,
+        likes_count: 0,
+        comments_count: 0,
+        user_has_liked: false,
+    };
 };
 
 
@@ -219,7 +232,7 @@ export const createCommunity = async (
 
     const fileExt = imageFile.name.split('.').pop();
     const fileName = `${Date.now()}.${fileExt}`;
-    const filePath = `community_images/${fileName}`;
+    const filePath = `community/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
         .from('assets')
