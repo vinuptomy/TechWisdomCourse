@@ -21,7 +21,7 @@ const formatProfile = (data: any): UserProfile | null => {
 export const getSession = async (): Promise<UserProfile | null> => {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-        console.error('Error getting session:', sessionError);
+        console.error('Error getting session:', sessionError.message);
         return null;
     }
     if (!session?.user) {
@@ -32,10 +32,15 @@ export const getSession = async (): Promise<UserProfile | null> => {
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
     
     if (profileError) {
-        console.error('Error fetching profile:', profileError);
+        console.error('Error fetching profile:', profileError.message);
+        return null;
+    }
+
+    // If profileData is null (no profile found), we must return null before trying to spread it.
+    if (!profileData) {
         return null;
     }
 
@@ -45,18 +50,46 @@ export const getSession = async (): Promise<UserProfile | null> => {
 export const onAuthStateChange = (callback: (user: UserProfile | null) => void): (() => void) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
-            const { data: profileData, error } = await supabase
+            // First, attempt to fetch the user's profile.
+            const { data: profileData, error: profileError } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', session.user.id)
-                .single();
-            if (error) {
-                console.error('Error fetching profile on auth change:', error);
+                .maybeSingle();
+
+            if (profileError) {
+                console.error('Error fetching profile on auth change:', profileError.message);
                 callback(null);
+                return;
+            }
+
+            if (profileData) {
+                // Profile exists, format and return it.
+                callback(formatProfile({ ...profileData, email: session.user.email }));
             } else {
-                 callback(formatProfile({ ...profileData, email: session.user.email }));
+                // Profile does not exist, but the user is authenticated.
+                // This can happen if the DB trigger failed. Let's create a profile now.
+                console.warn(`Profile not found for user ${session.user.id}. Creating a new one.`);
+                const { data: newProfile, error: insertError } = await supabase
+                    .from('profiles')
+                    .insert({
+                        id: session.user.id,
+                        name: session.user.user_metadata?.name || 'New User',
+                        avatar_url: session.user.user_metadata?.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${session.user.email}`,
+                    })
+                    .select()
+                    .single();
+                
+                if (insertError) {
+                    console.error('Error creating profile for authenticated user:', insertError.message);
+                    callback(null);
+                } else {
+                    // Successfully created profile, format and return it.
+                    callback(formatProfile({ ...newProfile, email: session.user.email }));
+                }
             }
         } else {
+            // No session, user is logged out.
             callback(null);
         }
     });
@@ -65,17 +98,14 @@ export const onAuthStateChange = (callback: (user: UserProfile | null) => void):
 };
 
 
-export const signIn = async (email: string, password: string): Promise<UserProfile> => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+export const signIn = async (email: string, password: string): Promise<void> => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    if (!data.user) throw new Error("Sign in failed, no user returned.");
-    
-    const user = await getSession();
-    if (!user) throw new Error("Could not retrieve user profile after sign in.");
-    return user;
+    // The onAuthStateChange listener in App.tsx handles fetching the profile and updating app state.
+    // Attempting to fetch the profile here can cause a race condition.
 };
 
-export const signUp = async (email: string, password: string, name: string): Promise<UserProfile> => {
+export const signUp = async (email: string, password: string, name: string): Promise<void> => {
     const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -88,12 +118,8 @@ export const signUp = async (email: string, password: string, name: string): Pro
     });
 
     if (error) throw error;
-    if (!data.user) throw new Error("Sign up failed, no user returned.");
-
-    // The onAuthStateChange listener will handle fetching the profile
-    const user = await getSession();
-    if (!user) throw new Error("Could not retrieve user profile after sign up.");
-    return user;
+    // The onAuthStateChange listener handles fetching the profile and updating the app state.
+    // We don't need to return the user from here, as the session might not be immediately active.
 };
 
 
