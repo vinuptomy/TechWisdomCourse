@@ -4,7 +4,7 @@ import {
     getCommunities, createCommunity, createDownload, getDownloads, getCourses, 
     createClassroom, getClassrooms, createCourse, getCourseDetails, createModule, createChapter 
 } from '../services/apiService';
-import { SpinnerIcon, CommunityIcon, UsersIcon, SubscriptionIcon, BackIcon, DownloadIcon, ClassroomFilledIcon, ChevronDownIcon } from './icons';
+import { SpinnerIcon, CommunityIcon, UsersIcon, SubscriptionIcon, BackIcon, DownloadIcon, ClassroomFilledIcon, ChevronDownIcon, ClassroomIcon } from './icons';
 
 type AdminSubView = 'dashboard' | 'community' | 'course' | 'classroom' | 'user' | 'subscription' | 'downloads';
 
@@ -535,7 +535,7 @@ const AdminDashboard: FC<{ onNavigate: (view: AdminSubView) => void }> = ({ onNa
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <AdminCard title="Communities" description="Create and manage all user communities and set access levels (free/premium)." icon={CommunityIcon} onManage={() => onNavigate('community')} />
             <AdminCard title="Classrooms" description="Link courses with communities to create focused learning environments." icon={ClassroomFilledIcon} onManage={() => onNavigate('classroom')} />
-            <AdminCard title="Courses" description="Add new courses, modules, chapters, and manage all course content." icon={CommunityIcon} onManage={() => onNavigate('course')} />
+            <AdminCard title="Courses" description="Add new courses, modules, chapters, and manage all course content." icon={ClassroomIcon} onManage={() => onNavigate('course')} />
             <AdminCard title="Downloads" description="Upload and manage all downloadable resources for courses and the main downloads section." icon={DownloadIcon} onManage={() => onNavigate('downloads')} />
             <AdminCard title="Users" description="View user profiles, assign roles (member/admin), and monitor user activity." icon={UsersIcon} onManage={() => onNavigate('user')} />
             <AdminCard title="Subscriptions" description="Monitor subscription statuses and manage plans. (Integrates with Stripe)." icon={SubscriptionIcon} onManage={() => onNavigate('subscription')} />
