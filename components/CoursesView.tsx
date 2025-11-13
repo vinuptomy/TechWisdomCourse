@@ -2,7 +2,7 @@ import React, { useState, useEffect, FC } from 'react';
 import type { Course, UserProfile } from '../types';
 import { getCourses } from '../services/apiService';
 import { useDebounce } from '../hooks/useDebounce';
-import { SearchIcon } from './icons';
+import { SearchIcon, SpinnerIcon } from './icons';
 
 const CourseCard: FC<{ course: Course; onClick: () => void }> = ({ course, onClick }) => (
     <div onClick={onClick} className="bg-surface rounded-xl overflow-hidden border border-border hover:border-primary transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group">
@@ -67,11 +67,16 @@ export const CoursesView: FC<{ currentUser: UserProfile; onSelectCourse: (course
                         placeholder="Search for courses..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-surface border border-border rounded-lg p-3 pl-10 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition"
+                        className="w-full bg-surface border border-border rounded-lg p-3 pl-10 pr-10 text-text-primary placeholder-text-secondary focus:ring-2 focus:ring-primary focus:outline-none transition"
                     />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none">
                         <SearchIcon />
                     </div>
+                     {loading && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary">
+                            <SpinnerIcon className="animate-spin" />
+                        </div>
+                    )}
                 </div>
                  <div className="flex-shrink-0 flex items-center gap-2 bg-surface border border-border p-1 rounded-lg">
                     <FilterButton active={filter === 'all'} onClick={() => setFilter('all')}>
@@ -86,12 +91,19 @@ export const CoursesView: FC<{ currentUser: UserProfile; onSelectCourse: (course
                 </div>
             </div>
 
-            {loading ? (
+            {/* Initial loading state */}
+            {loading && courses.length === 0 && (
                 <p className="text-center text-text-secondary">Loading courses...</p>
-            ) : filteredCourses.length === 0 ? (
+            )}
+
+            {/* No results state */}
+            {!loading && filteredCourses.length === 0 && (
                  <p className="text-center text-text-secondary">No{filter !== 'all' ? ` ${filter}` : ''} courses found{debouncedSearchTerm ? ` matching "${debouncedSearchTerm}"` : ''}.</p>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            )}
+            
+            {/* Grid view with smooth loading transition */}
+            {filteredCourses.length > 0 && (
+                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-opacity duration-300 ${loading ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                     {filteredCourses.map(course => (
                         <CourseCard key={course.id} course={course} onClick={() => onSelectCourse(course)} />
                     ))}
