@@ -55,16 +55,27 @@ export interface Download {
   is_premium: boolean;
 }
 
-// Corresponds to the new 'chapters' table. It can have its own downloads.
+// Corresponds to the new 'chapters' table. It belongs to a module.
 export interface Chapter {
   id: string;
-  course_id: string;
+  module_id: string;
   title: string;
   description: string;
   video_url: string;
   position: number;
-  downloads: Download[]; // Joined from 'chapter_downloads'
+  downloads?: Download[]; // Joined from 'chapter_downloads'
 }
+
+// Corresponds to the new 'modules' table. It belongs to a course.
+export interface Module {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  position: number;
+  chapters: Chapter[]; // Fetched and attached in the service layer
+}
+
 
 // Corresponds to the new 'courses' table structure
 export interface Course {
@@ -75,6 +86,8 @@ export interface Course {
   is_premium: boolean;
   syllabus: string;
   tags: string[];
+  primary_community_id?: string | null;
+  modules?: Module[]; // Attached in the detail view
 }
 
 

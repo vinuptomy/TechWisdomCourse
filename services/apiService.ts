@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment, AuthorProfile, Chapter, Classroom } from '../types';
+import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment, AuthorProfile, Chapter, Classroom, Module } from '../types';
 
 // --- HELPER FUNCTIONS ---
 
@@ -179,9 +179,9 @@ export const createPost = async (content: string, communityId: string): Promise<
     };
 };
 
-
+// --- COURSE MGMT API ---
 export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => {
-    let query = supabase.from('courses').select('*');
+    let query = supabase.from('courses').select('id, title, description, thumbnail_url, is_premium, tags');
     
     if (searchTerm) {
         query = query.ilike('title', `%${searchTerm}%`);
@@ -192,8 +192,7 @@ export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => 
     return data as Course[];
 };
 
-export const getCourseDetails = async (courseId: string): Promise<{ course: Course; chapters: Chapter[] }> => {
-    // Fetch course details
+export const getCourseDetails = async (courseId: string): Promise<Course> => {
     const { data: courseData, error: courseError } = await supabase
         .from('courses')
         .select('*')
@@ -201,25 +200,64 @@ export const getCourseDetails = async (courseId: string): Promise<{ course: Cour
         .single();
     if (courseError) throw courseError;
 
-    // Fetch chapters for the course, along with their associated downloads
-    const { data: chaptersData, error: chaptersError } = await supabase
-        .from('chapters')
-        .select('*, downloads:chapter_downloads(download:downloads(*))')
+    const { data: modulesData, error: modulesError } = await supabase
+        .from('modules')
+        .select('*, chapters(*, downloads:chapter_downloads(download:downloads(*)))')
         .eq('course_id', courseId)
-        .order('position');
-        
-    if (chaptersError) throw chaptersError;
+        .order('position', { foreignTable: 'modules', ascending: true })
+        .order('position', { foreignTable: 'chapters', ascending: true });
 
-    // The query nests the download object, so we need to flatten it.
-    const chapters = chaptersData.map((chapter: any) => ({
-        ...chapter,
-        downloads: chapter.downloads.map((d: any) => d.download).filter(Boolean)
+    if (modulesError) throw modulesError;
+    
+    const modules = modulesData.map((module: any) => ({
+        ...module,
+        chapters: module.chapters.map((chapter: any) => ({
+            ...chapter,
+            downloads: chapter.downloads.map((d: any) => d.download).filter(Boolean)
+        }))
     }));
 
-    return { course: courseData, chapters };
+    return { ...courseData, modules };
 };
 
 
+export const createCourse = async (
+    courseData: { title: string; description: string; syllabus: string; is_premium: boolean; primary_community_id: string | null; },
+    thumbnailFile: File
+): Promise<Course> => {
+    const fileExt = thumbnailFile.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `course_thumbnails/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from('assets').upload(filePath, thumbnailFile);
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage.from('assets').getPublicUrl(filePath);
+
+    const { data, error } = await supabase
+        .from('courses')
+        .insert({ ...courseData, thumbnail_url: publicUrl })
+        .select()
+        .single();
+        
+    if (error) throw error;
+    return data;
+};
+
+export const createModule = async (moduleData: { course_id: string; title: string; description: string; position: number; }): Promise<Module> => {
+    const { data, error } = await supabase.from('modules').insert(moduleData).select().single();
+    if (error) throw error;
+    return { ...data, chapters: [] };
+};
+
+export const createChapter = async (chapterData: { module_id: string; title: string; description: string; video_url: string; position: number; }): Promise<Chapter> => {
+    const { data, error } = await supabase.from('chapters').insert(chapterData).select().single();
+    if (error) throw error;
+    return { ...data, downloads: [] };
+};
+
+
+// --- DOWNLOADS API ---
 export const getDownloads = async (searchTerm: string = ""): Promise<Download[]> => {
     let query = supabase.from('downloads').select('*');
      if (searchTerm) {

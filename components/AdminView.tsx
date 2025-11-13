@@ -1,9 +1,237 @@
 import React, { useState, useEffect, FC, FormEvent } from 'react';
-import type { UserProfile, Community, Download, Course, Classroom } from '../types';
-import { getCommunities, createCommunity, createDownload, getDownloads, getCourses, createClassroom, getClassrooms } from '../services/apiService';
-import { SpinnerIcon, CommunityIcon, UsersIcon, SubscriptionIcon, BackIcon, DownloadIcon, ClassroomFilledIcon } from './icons';
+import type { UserProfile, Community, Download, Course, Classroom, Module, Chapter } from '../types';
+import { 
+    getCommunities, createCommunity, createDownload, getDownloads, getCourses, 
+    createClassroom, getClassrooms, createCourse, getCourseDetails, createModule, createChapter 
+} from '../services/apiService';
+import { SpinnerIcon, CommunityIcon, UsersIcon, SubscriptionIcon, BackIcon, DownloadIcon, ClassroomFilledIcon, ChevronDownIcon } from './icons';
 
 type AdminSubView = 'dashboard' | 'community' | 'course' | 'classroom' | 'user' | 'subscription' | 'downloads';
+
+// --- Reusable Modal Component ---
+const Modal: FC<{ isOpen: boolean; onClose: () => void; children: React.ReactNode; title: string }> = ({ isOpen, onClose, children, title }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-surface w-full max-w-lg rounded-2xl shadow-2xl border border-border" onClick={e => e.stopPropagation()}>
+                <header className="p-4 border-b border-border">
+                    <h3 className="font-bold text-lg">{title}</h3>
+                </header>
+                <main className="p-6">{children}</main>
+            </div>
+        </div>
+    );
+};
+
+// --- Course Management View ---
+const CourseAdminView: FC<{ onBack: () => void }> = ({ onBack }) => {
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+    const [isCreateModalOpen, setCreateModalOpen] = useState(false);
+
+    const fetchCourses = async () => {
+        setLoading(true);
+        try {
+            const data = await getCourses();
+            setCourses(data);
+        } catch (error) { console.error("Failed to fetch courses", error); }
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchCourses(); }, []);
+    
+    const handleCourseCreated = (newCourse: Course) => {
+        setCourses(prev => [newCourse, ...prev]);
+        setCreateModalOpen(false);
+        setSelectedCourse(newCourse); // Automatically open the new course for editing
+    };
+
+    if (selectedCourse) {
+        return <CourseEditor courseId={selectedCourse.id} onBack={() => { setSelectedCourse(null); fetchCourses(); }} />;
+    }
+
+    return (
+        <div>
+            <button onClick={onBack} className="mb-6 flex items-center gap-2 text-text-secondary hover:text-primary"><BackIcon /> Back to Admin Dashboard</button>
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold">Course Management</h2>
+                <button onClick={() => setCreateModalOpen(true)} className="px-4 py-2 bg-primary text-white font-semibold rounded-lg">Create New Course</button>
+            </div>
+             <Modal isOpen={isCreateModalOpen} onClose={() => setCreateModalOpen(false)} title="Create New Course">
+                <CreateCourseForm onCourseCreated={handleCourseCreated} />
+            </Modal>
+            <div className="bg-surface p-6 rounded-xl border border-border">
+                {loading ? <p>Loading courses...</p> : courses.map(course => (
+                    <div key={course.id} className="p-3 bg-background rounded-lg flex items-center justify-between mb-2">
+                        <span>{course.title}</span>
+                        <button onClick={() => setSelectedCourse(course)} className="text-sm text-primary font-semibold">Edit</button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const CreateCourseForm: FC<{ onCourseCreated: (course: Course) => void }> = ({ onCourseCreated }) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [syllabus, setSyllabus] = useState('');
+    const [isPremium, setIsPremium] = useState(false);
+    const [communityId, setCommunityId] = useState<string | null>(null);
+    const [thumbnail, setThumbnail] = useState<File | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [communities, setCommunities] = useState<Community[]>([]);
+    
+    useEffect(() => { getCommunities().then(setCommunities); }, []);
+
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault();
+        if (!title || !description || !thumbnail) { setError('Title, description and thumbnail are required.'); return; }
+        setLoading(true); setError('');
+        try {
+            const newCourse = await createCourse({ title, description, syllabus, is_premium: isPremium, primary_community_id: communityId }, thumbnail);
+            onCourseCreated(newCourse);
+        } catch (err: any) { setError(err.message); }
+        finally { setLoading(false); }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <input type="text" placeholder="Course Title" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
+            <textarea placeholder="Short Description" value={description} onChange={e => setDescription(e.target.value)} required rows={3} className="w-full bg-background border border-border rounded-lg p-3" />
+            <textarea placeholder="Syllabus (Markdown or HTML supported)" value={syllabus} onChange={e => setSyllabus(e.target.value)} rows={6} className="w-full bg-background border border-border rounded-lg p-3" />
+            <select value={communityId || ''} onChange={e => setCommunityId(e.target.value || null)} className="w-full bg-background border border-border rounded-lg p-3">
+                <option value="">Link a Primary Community (Optional)</option>
+                {communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <input type="file" accept="image/*" onChange={e => e.target.files && setThumbnail(e.target.files[0])} required className="w-full text-sm text-text-secondary file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-primary/90" />
+            <div className="flex items-center gap-2">
+                <input type="checkbox" id="isPremiumCourse" checked={isPremium} onChange={e => setIsPremium(e.target.checked)} />
+                <label htmlFor="isPremiumCourse">Premium Course</label>
+            </div>
+            {error && <p className="text-red-400">{error}</p>}
+            <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white font-semibold rounded-lg disabled:bg-gray-500">{loading ? 'Creating...' : 'Create Course'}</button>
+        </form>
+    );
+};
+
+const CourseEditor: FC<{ courseId: string; onBack: () => void }> = ({ courseId, onBack }) => {
+    const [course, setCourse] = useState<Course | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [isModuleModalOpen, setModuleModalOpen] = useState(false);
+    const [isChapterModalOpen, setChapterModalOpen] = useState(false);
+    const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
+
+    const fetchCourse = async () => {
+        setLoading(true);
+        try {
+            const data = await getCourseDetails(courseId);
+            setCourse(data);
+        } catch (error) { console.error("Failed to fetch course details", error); }
+        setLoading(false);
+    };
+
+    useEffect(() => { fetchCourse(); }, [courseId]);
+    
+    const handleModuleCreated = (newModule: Module) => {
+        setCourse(prev => prev ? ({ ...prev, modules: [...(prev.modules || []), newModule] }) : null);
+        setModuleModalOpen(false);
+    };
+    
+    const handleChapterCreated = (newChapter: Chapter) => {
+        setCourse(prev => prev ? ({
+            ...prev,
+            modules: (prev.modules || []).map(m => 
+                m.id === newChapter.module_id 
+                ? { ...m, chapters: [...m.chapters, newChapter] } 
+                : m
+            )
+        }) : null);
+        setChapterModalOpen(false);
+        setSelectedModuleId(null);
+    };
+
+    if (loading) return <p>Loading course editor...</p>;
+    if (!course) return <p>Course not found.</p>;
+
+    return (
+        <div>
+            <button onClick={onBack} className="mb-6 flex items-center gap-2 text-text-secondary hover:text-primary"><BackIcon /> Back to Courses List</button>
+            <h2 className="text-2xl font-bold mb-4">{course.title}</h2>
+            <div className="bg-surface p-6 rounded-xl border border-border">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold">Modules & Chapters</h3>
+                    <button onClick={() => setModuleModalOpen(true)} className="px-4 py-2 bg-primary text-white font-semibold rounded-lg">Add Module</button>
+                </div>
+                <div className="space-y-4">
+                    {(course.modules || []).map(module => (
+                        <div key={module.id} className="p-4 bg-background rounded-lg">
+                            <div className="flex justify-between items-center">
+                                <p className="font-bold">{module.title}</p>
+                                <button onClick={() => { setSelectedModuleId(module.id); setChapterModalOpen(true); }} className="text-sm text-primary font-semibold">Add Chapter</button>
+                            </div>
+                            <ul className="mt-2 space-y-1 pl-4">
+                                {module.chapters.map(chapter => (
+                                    <li key={chapter.id} className="text-sm text-text-secondary">{chapter.title}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            
+            <Modal isOpen={isModuleModalOpen} onClose={() => setModuleModalOpen(false)} title="Add New Module">
+                <CreateModuleForm courseId={course.id} position={(course.modules || []).length} onModuleCreated={handleModuleCreated} />
+            </Modal>
+            
+            <Modal isOpen={isChapterModalOpen} onClose={() => setChapterModalOpen(false)} title="Add New Chapter">
+                {selectedModuleId && <CreateChapterForm moduleId={selectedModuleId} position={(course.modules?.find(m => m.id === selectedModuleId)?.chapters.length || 0)} onChapterCreated={handleChapterCreated} />}
+            </Modal>
+        </div>
+    );
+};
+
+const CreateModuleForm: FC<{ courseId: string, position: number, onModuleCreated: (module: Module) => void }> = ({ courseId, position, onModuleCreated }) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [loading, setLoading] = useState(false);
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault(); setLoading(true);
+        const newModule = await createModule({ course_id: courseId, title, description, position });
+        onModuleCreated(newModule);
+        setLoading(false);
+    };
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <input type="text" placeholder="Module Title" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
+            <textarea placeholder="Module Description" value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full bg-background border border-border rounded-lg p-3" />
+            <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white rounded-lg">{loading ? 'Adding...' : 'Add Module'}</button>
+        </form>
+    );
+};
+
+const CreateChapterForm: FC<{ moduleId: string, position: number, onChapterCreated: (chapter: Chapter) => void }> = ({ moduleId, position, onChapterCreated }) => {
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [videoUrl, setVideoUrl] = useState('');
+    const [loading, setLoading] = useState(false);
+    const handleSubmit = async (e: FormEvent) => {
+        e.preventDefault(); setLoading(true);
+        const newChapter = await createChapter({ module_id: moduleId, title, description, video_url: videoUrl, position });
+        onChapterCreated(newChapter);
+        setLoading(false);
+    };
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <input type="text" placeholder="Chapter Title" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
+            <textarea placeholder="Chapter Description" value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full bg-background border border-border rounded-lg p-3" />
+            <input type="text" placeholder="YouTube Video URL or ID" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
+            <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white rounded-lg">{loading ? 'Adding...' : 'Add Chapter'}</button>
+        </form>
+    );
+};
 
 // --- Community Management View ---
 const CommunityAdminView: FC<{ onBack: () => void }> = ({ onBack }) => {
@@ -307,7 +535,7 @@ const AdminDashboard: FC<{ onNavigate: (view: AdminSubView) => void }> = ({ onNa
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <AdminCard title="Communities" description="Create and manage all user communities and set access levels (free/premium)." icon={CommunityIcon} onManage={() => onNavigate('community')} />
             <AdminCard title="Classrooms" description="Link courses with communities to create focused learning environments." icon={ClassroomFilledIcon} onManage={() => onNavigate('classroom')} />
-            <AdminCard title="Courses" description="Add new courses, chapters, and manage course content, and premium status." icon={CommunityIcon} onManage={() => onNavigate('course')} />
+            <AdminCard title="Courses" description="Add new courses, modules, chapters, and manage all course content." icon={CommunityIcon} onManage={() => onNavigate('course')} />
             <AdminCard title="Downloads" description="Upload and manage all downloadable resources for courses and the main downloads section." icon={DownloadIcon} onManage={() => onNavigate('downloads')} />
             <AdminCard title="Users" description="View user profiles, assign roles (member/admin), and monitor user activity." icon={UsersIcon} onManage={() => onNavigate('user')} />
             <AdminCard title="Subscriptions" description="Monitor subscription statuses and manage plans. (Integrates with Stripe)." icon={SubscriptionIcon} onManage={() => onNavigate('subscription')} />
@@ -328,7 +556,7 @@ export const AdminView: FC<{ user: UserProfile }> = ({ user }) => {
             case 'community': return <CommunityAdminView onBack={() => setSubView('dashboard')} />;
             case 'classroom': return <ClassroomAdminView onBack={() => setSubView('dashboard')} />;
             case 'downloads': return <DownloadsAdminView onBack={() => setSubView('dashboard')} />;
-            case 'course': return <PlaceholderAdminView title="Courses" onBack={() => setSubView('dashboard')} />;
+            case 'course': return <CourseAdminView onBack={() => setSubView('dashboard')} />;
             case 'user': return <PlaceholderAdminView title="Users" onBack={() => setSubView('dashboard')} />;
             case 'subscription': return <PlaceholderAdminView title="Subscriptions" onBack={() => setSubView('dashboard')} />;
             default: return <AdminDashboard onNavigate={setSubView} />;
