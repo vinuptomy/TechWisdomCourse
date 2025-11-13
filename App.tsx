@@ -1,23 +1,26 @@
 import React, { useState, useCallback, useEffect, FC } from 'react';
-import type { UserProfile, Course, View } from './types';
+import type { UserProfile, View, Classroom } from './types';
 import { getSession, onAuthStateChange } from './services/apiService';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { CommunityView } from './components/CommunityView';
-import { ClassroomView } from './components/ClassroomView';
+import { CoursesView } from './components/CoursesView';
 import { CourseDetailView } from './components/CourseDetailView';
 import { DownloadsView } from './components/DownloadsView';
 import { SettingsView } from './components/SettingsView';
 import { AdminView } from './components/AdminView';
 import { AiAssistant } from './components/AiAssistant';
 import { AiIcon } from './components/icons';
+import { ClassroomsView } from './components/ClassroomsView';
+import { ClassroomDetailView } from './components/ClassroomDetailView';
 
 export default function App() {
     const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const [loadingSession, setLoadingSession] = useState(true);
     const [currentView, setView] = useState<View>('community');
-    const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+    const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+    const [selectedClassroomId, setSelectedClassroomId] = useState<string | null>(null);
     const [isAiAssistantOpen, setAiAssistantOpen] = useState(false);
 
     // Effect to check for active session on initial load
@@ -35,27 +38,40 @@ export default function App() {
              if (!user) {
                 // Reset view on logout
                 setView('community');
-                setSelectedCourse(null);
+                setSelectedCourseId(null);
+                setSelectedClassroomId(null);
             }
         });
 
         return () => unsubscribe();
     }, []);
 
+    const handleSetView = (view: View) => {
+        setView(view);
+        setSelectedCourseId(null);
+        setSelectedClassroomId(null);
+    }
+
     const renderContent = () => {
         if (!currentUser) return null;
 
-        if (selectedCourse) {
-            return <CourseDetailView course={selectedCourse} onBack={() => setSelectedCourse(null)} />;
+        if (selectedCourseId) {
+            return <CourseDetailView courseId={selectedCourseId} onBack={() => setSelectedCourseId(null)} />;
+        }
+        
+        if (selectedClassroomId) {
+            return <ClassroomDetailView classroomId={selectedClassroomId} currentUser={currentUser} onBack={() => setSelectedClassroomId(null)} />;
         }
 
         switch (currentView) {
             case 'community':
                 return <CommunityView currentUser={currentUser} />;
+            case 'courses':
+                return <CoursesView currentUser={currentUser} onSelectCourse={(course) => setSelectedCourseId(course.id)} />;
             case 'classroom':
-                return <ClassroomView currentUser={currentUser} onSelectCourse={setSelectedCourse} />;
+                return <ClassroomsView currentUser={currentUser} onSelectClassroom={(classroom) => setSelectedClassroomId(classroom.id)} />;
             case 'downloads':
-                return <DownloadsView />;
+                return <DownloadsView currentUser={currentUser} />;
             case 'settings':
                  return <SettingsView user={currentUser} />;
             case 'admin':
@@ -79,7 +95,7 @@ export default function App() {
 
     return (
         <div className="min-h-screen bg-background">
-            <Sidebar currentView={currentView} setView={setView} user={currentUser} />
+            <Sidebar currentView={currentView} setView={handleSetView} user={currentUser} />
             <div className="lg:pl-64">
                 <Header user={currentUser} />
                 <main className="p-6 pt-24">

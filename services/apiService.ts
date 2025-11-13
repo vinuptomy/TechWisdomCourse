@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment, AuthorProfile } from '../types';
+import type { UserProfile, Post, Course, Download, UserPlan, Profile, Community, Comment, AuthorProfile, Chapter, Classroom } from '../types';
 
 // --- HELPER FUNCTIONS ---
 
@@ -133,13 +133,25 @@ export const getPosts = async (communityId: string): Promise<Post[]> => {
     return data as Post[];
 };
 
+export const getPostsForCommunities = async (communityIds: string[]): Promise<Post[]> => {
+    if (!communityIds || communityIds.length === 0) {
+        return [];
+    }
+
+    // Note: This approach makes multiple RPC calls. For large-scale apps,
+    // you might create a new RPC function that accepts an array of IDs.
+    const postPromises = communityIds.map(id => getPosts(id));
+    const results = await Promise.all(postPromises);
+    
+    // Flatten the array of arrays, and sort by creation date descending
+    return results.flat().sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+};
+
+
 export const createPost = async (content: string, communityId: string): Promise<Post> => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("User must be logged in to create a post.");
 
-    // The RPC function `get_posts_with_details` joins the author's profile.
-    // To return a complete `Post` object without a second expensive RPC call,
-    // we first fetch the current user's profile.
     const { data: authorProfile, error: profileError } = await supabase
         .from('profiles')
         .select('id, name, avatar_url')
@@ -158,8 +170,6 @@ export const createPost = async (content: string, communityId: string): Promise<
 
     if (insertError) throw insertError;
 
-    // Manually construct the full `Post` object to immediately update the UI.
-    // This is more efficient and fixes the previous invalid query.
     return {
         ...newPostData,
         author: authorProfile,
@@ -171,7 +181,7 @@ export const createPost = async (content: string, communityId: string): Promise<
 
 
 export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => {
-    let query = supabase.from('courses').select('*, lessons(*)');
+    let query = supabase.from('courses').select('*');
     
     if (searchTerm) {
         query = query.ilike('title', `%${searchTerm}%`);
@@ -182,11 +192,72 @@ export const getCourses = async (searchTerm: string = ""): Promise<Course[]> => 
     return data as Course[];
 };
 
-export const getDownloads = async (): Promise<Download[]> => {
-    const { data, error } = await supabase.from('downloads').select('*');
+export const getCourseDetails = async (courseId: string): Promise<{ course: Course; chapters: Chapter[] }> => {
+    // Fetch course details
+    const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('*')
+        .eq('id', courseId)
+        .single();
+    if (courseError) throw courseError;
+
+    // Fetch chapters for the course, along with their associated downloads
+    const { data: chaptersData, error: chaptersError } = await supabase
+        .from('chapters')
+        .select('*, downloads:chapter_downloads(download:downloads(*))')
+        .eq('course_id', courseId)
+        .order('position');
+        
+    if (chaptersError) throw chaptersError;
+
+    // The query nests the download object, so we need to flatten it.
+    const chapters = chaptersData.map((chapter: any) => ({
+        ...chapter,
+        downloads: chapter.downloads.map((d: any) => d.download).filter(Boolean)
+    }));
+
+    return { course: courseData, chapters };
+};
+
+
+export const getDownloads = async (searchTerm: string = ""): Promise<Download[]> => {
+    let query = supabase.from('downloads').select('*');
+     if (searchTerm) {
+        query = query.ilike('title', `%${searchTerm}%`);
+    }
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (error) throw error;
     return data;
 };
+
+export const createDownload = async (
+    { title, description, is_premium }: { title: string; description: string; is_premium: boolean },
+    file: File
+): Promise<Download> => {
+     const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `downloads/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('assets')
+        .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+        .from('assets')
+        .getPublicUrl(filePath);
+    
+    const { data, error } = await supabase
+        .from('downloads')
+        .insert({ title, description, is_premium, file_url: publicUrl })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
 
 export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<UserProfile | null> => {
      const { data: updatedProfile, error } = await supabase
@@ -264,6 +335,82 @@ export const createCommunity = async (
     }
 
     return data;
+};
+
+// --- CLASSROOM API ---
+
+export const getClassrooms = async (searchTerm: string = ""): Promise<Classroom[]> => {
+    let query = supabase
+        .from('classrooms')
+        .select(`
+            *,
+            course:courses(title),
+            community:communities(name)
+        `);
+
+    if (searchTerm) {
+        query = query.ilike('name', `%${searchTerm}%`);
+    }
+
+    const { data, error } = await query.order('name', { ascending: true });
+    if (error) throw error;
+    
+    // Flatten the joined data for easier use in the UI
+    return data.map((c: any) => ({
+        ...c,
+        course_title: c.course?.title,
+        primary_community_name: c.community?.name,
+    }));
+};
+
+export const createClassroom = async (
+    { name, description, is_premium, course_id, primary_community_id }: Omit<Classroom, 'id'>
+): Promise<Classroom> => {
+    const { data, error } = await supabase
+        .from('classrooms')
+        .insert({ name, description, is_premium, course_id, primary_community_id })
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
+
+export const getClassroomDetails = async (classroomId: string): Promise<{ classroom: Classroom, course: Course, communities: Community[] }> => {
+    // Fetch classroom, its course, and its primary community
+    const { data: classroomData, error: classroomError } = await supabase
+        .from('classrooms')
+        .select('*, course:courses(*), community:communities(*)')
+        .eq('id', classroomId)
+        .single();
+    if (classroomError) throw classroomError;
+
+    // Fetch additional linked communities
+    const { data: additionalCommunitiesData, error: additionalCommunitiesError } = await supabase
+        .from('classroom_communities')
+        .select('community:communities(*)')
+        .eq('classroom_id', classroomId);
+    if (additionalCommunitiesError) throw additionalCommunitiesError;
+
+    const additionalCommunities = additionalCommunitiesData.map((item: any) => item.community);
+    
+    // Combine primary and additional communities, ensuring no duplicates
+    const allCommunities = [
+        classroomData.community,
+        ...additionalCommunities.filter(c => c.id !== classroomData.community.id)
+    ].filter(Boolean);
+
+    return {
+        classroom: {
+            id: classroomData.id,
+            name: classroomData.name,
+            description: classroomData.description,
+            is_premium: classroomData.is_premium,
+            course_id: classroomData.course_id,
+            primary_community_id: classroomData.primary_community_id,
+        },
+        course: classroomData.course,
+        communities: allCommunities
+    };
 };
 
 // --- COMMENTS & LIKES API ---

@@ -46,31 +46,37 @@ export interface Comment {
   author: AuthorProfile;
 }
 
-// Corresponds to the 'lessons' table
-export interface Lesson {
+// Corresponds to the 'downloads' table
+export interface Download {
   id: string;
-  course_id: string;
   title: string;
-  video_id: string; // YouTube video ID
+  description: string;
+  file_url: string;
   is_premium: boolean;
 }
 
-// Corresponds to the 'courses' table
+// Corresponds to the new 'chapters' table. It can have its own downloads.
+export interface Chapter {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  video_url: string;
+  position: number;
+  downloads: Download[]; // Joined from 'chapter_downloads'
+}
+
+// Corresponds to the new 'courses' table structure
 export interface Course {
   id: string;
   title: string;
   description: string;
   thumbnail_url: string;
-  lessons: Lesson[]; // Joined from 'lessons' table
+  is_premium: boolean;
+  syllabus: string;
+  tags: string[];
 }
 
-// Corresponds to the 'downloads' table
-export interface Download {
-  id:string;
-  title: string;
-  description: string;
-  file_url: string;
-}
 
 export interface Community {
   id: string;
@@ -81,7 +87,20 @@ export interface Community {
   is_premium: boolean;
 }
 
-export type View = 'community' | 'classroom' | 'downloads' | 'settings' | 'admin';
+// Corresponds to the new 'classrooms' table
+export interface Classroom {
+  id: string;
+  name: string;
+  description: string;
+  is_premium: boolean;
+  course_id: string;
+  primary_community_id: string;
+  // These fields are joined in the API call for displaying in lists
+  course_title?: string;
+  primary_community_name?: string;
+}
+
+export type View = 'community' | 'courses' | 'classroom' | 'downloads' | 'settings' | 'admin';
 
 export interface AiChatMessage {
   role: 'user' | 'model';

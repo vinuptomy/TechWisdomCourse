@@ -5,6 +5,7 @@ import { CommunityIcon, ClassroomIcon, DownloadIcon, SettingsIcon, AdminIcon } f
 export const Sidebar: FC<{ currentView: View; setView: (view: View) => void; user: UserProfile }> = ({ currentView, setView, user }) => {
     const navItems: { view: View; label: string; icon: FC<any>; adminOnly?: boolean }[] = [
         { view: 'community', label: 'Community', icon: CommunityIcon },
+        { view: 'courses', label: 'Courses', icon: ClassroomIcon },
         { view: 'classroom', label: 'Classroom', icon: ClassroomIcon },
         { view: 'downloads', label: 'Downloads', icon: DownloadIcon },
         { view: 'settings', label: 'Settings', icon: SettingsIcon },
