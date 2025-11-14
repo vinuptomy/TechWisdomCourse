@@ -35,9 +35,14 @@ export const DownloadsView: FC<{ currentUser: UserProfile }> = ({ currentUser })
     useEffect(() => {
         const fetchDownloads = async () => {
             setLoading(true);
-            const fetchedDownloads = await getDownloads(debouncedSearchTerm);
-            setDownloads(fetchedDownloads);
-            setLoading(false);
+            try {
+                const fetchedDownloads = await getDownloads(debouncedSearchTerm);
+                setDownloads(fetchedDownloads);
+            } catch (error) {
+                console.error("Failed to fetch downloads:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchDownloads();
     }, [debouncedSearchTerm]);

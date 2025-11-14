@@ -49,9 +49,14 @@ export const ClassroomsView: FC<{ currentUser: UserProfile; onSelectClassroom: (
     useEffect(() => {
         const fetchClassrooms = async () => {
             setLoading(true);
-            const fetchedClassrooms = await getClassrooms(debouncedSearchTerm);
-            setClassrooms(fetchedClassrooms);
-            setLoading(false);
+            try {
+                const fetchedClassrooms = await getClassrooms(debouncedSearchTerm);
+                setClassrooms(fetchedClassrooms);
+            } catch (error) {
+                console.error("Failed to fetch classrooms:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchClassrooms();
     }, [debouncedSearchTerm]);

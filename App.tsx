@@ -26,9 +26,15 @@ export default function App() {
     // Effect to check for active session on initial load
     useEffect(() => {
         const checkSession = async () => {
-            const user = await getSession();
-            setCurrentUser(user);
-            setLoadingSession(false);
+            try {
+                const user = await getSession();
+                setCurrentUser(user);
+            } catch (error) {
+                console.error("Failed to check session on initial load:", error);
+                // User will remain null, which is handled gracefully.
+            } finally {
+                setLoadingSession(false);
+            }
         };
         checkSession();
 

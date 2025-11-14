@@ -29,7 +29,6 @@ export const CheckIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M20 6 9
 export const RocketIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M12 2L9 7v10c0 .55.45 1 1 1h4c.55 0 1-.45 1-1V7l-3-5z", "M9 13L5 17h14l-4-4H9z", "M10 19h4v4h-4z"]} {...props}/>;
 // FIX: Added missing ChevronDownIcon.
 export const ChevronDownIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="m6 9 6 6 6-6" {...props}/>;
-// FIX: Removed stray 'a' character from the export statement.
 export const AdminIcon = (props: SVGProps<SVGSVGElement>) => <Icon path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" {...props}/>;
 export const UsersIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 7 a4 4 0 1 0 0 -8 a4 4 0 1 0 0 8z", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"]} {...props}/>;
 export const SubscriptionIcon = (props: SVGProps<SVGSVGElement>) => <Icon path={["M22 12h-4l-3 9L9 3l-3 9H2", "M2 12h20v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"]} {...props}/>;

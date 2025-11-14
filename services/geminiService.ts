@@ -2,13 +2,15 @@ import { GoogleGenAI } from "@google/genai";
 import { AiChatMessage } from "../types";
 
 const API_KEY = process.env.API_KEY;
+let ai: GoogleGenAI | null = null;
 
-if (!API_KEY) {
+if (API_KEY) {
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+} else {
   // This is a fallback for development, but the app expects the key to be set in the environment.
   console.warn("API_KEY environment variable not set. AI features will not work.");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
 
 const systemInstruction = `You are Tech Wisdom AI, a helpful and friendly assistant for a learning and community platform.
 Your purpose is to answer user questions about the platform's features, guide them on how to find content like courses or downloads, and encourage community engagement.
@@ -20,7 +22,7 @@ Platform features include:
 - Settings: Where users can manage their account and subscription plan.`;
 
 export const getAiAssistantResponse = async (history: AiChatMessage[], newMessage: string): Promise<string> => {
-  if (!API_KEY) {
+  if (!ai) {
     return "AI Assistant is currently unavailable. The API key is not configured.";
   }
 

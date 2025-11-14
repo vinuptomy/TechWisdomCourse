@@ -84,7 +84,14 @@ const CreateCourseForm: FC<{ onCourseCreated: (course: Course) => void }> = ({ o
     const [error, setError] = useState('');
     const [communities, setCommunities] = useState<Community[]>([]);
     
-    useEffect(() => { getCommunities().then(setCommunities); }, []);
+    useEffect(() => {
+        getCommunities()
+            .then(setCommunities)
+            .catch(err => {
+                console.error("Failed to fetch communities for course form:", err);
+                setError("Could not load communities. Please try again later.");
+            });
+    }, []);
 
     const handleSubmit = async (e: FormEvent) => {
         e.preventDefault();
@@ -145,7 +152,7 @@ const CourseEditor: FC<{ courseId: string; onBack: () => void }> = ({ courseId, 
             ...prev,
             modules: (prev.modules || []).map(m => 
                 m.id === newChapter.module_id 
-                ? { ...m, chapters: [...m.chapters, newChapter] } 
+                ? { ...m, chapters: [...m.chapters, newChapter].sort((a, b) => a.position - b.position) } 
                 : m
             )
         }) : null);
@@ -197,16 +204,27 @@ const CreateModuleForm: FC<{ courseId: string, position: number, onModuleCreated
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    
     const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault(); setLoading(true);
-        const newModule = await createModule({ course_id: courseId, title, description, position });
-        onModuleCreated(newModule);
-        setLoading(false);
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            const newModule = await createModule({ course_id: courseId, title, description, position });
+            onModuleCreated(newModule);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
+
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <input type="text" placeholder="Module Title" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
             <textarea placeholder="Module Description" value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full bg-background border border-border rounded-lg p-3" />
+            {error && <p className="text-red-400 text-sm">{error}</p>}
             <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white rounded-lg">{loading ? 'Adding...' : 'Add Module'}</button>
         </form>
     );
@@ -217,17 +235,27 @@ const CreateChapterForm: FC<{ moduleId: string, position: number, onChapterCreat
     const [description, setDescription] = useState('');
     const [videoUrl, setVideoUrl] = useState('');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
     const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault(); setLoading(true);
-        const newChapter = await createChapter({ module_id: moduleId, title, description, video_url: videoUrl, position });
-        onChapterCreated(newChapter);
-        setLoading(false);
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        try {
+            const newChapter = await createChapter({ module_id: moduleId, title, description, video_url: videoUrl, position });
+            onChapterCreated(newChapter);
+        } catch(err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <input type="text" placeholder="Chapter Title" value={title} onChange={e => setTitle(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
             <textarea placeholder="Chapter Description" value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full bg-background border border-border rounded-lg p-3" />
             <input type="text" placeholder="YouTube Video URL or ID" value={videoUrl} onChange={e => setVideoUrl(e.target.value)} required className="w-full bg-background border border-border rounded-lg p-3" />
+            {error && <p className="text-red-400 text-sm">{error}</p>}
             <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-white rounded-lg">{loading ? 'Adding...' : 'Add Chapter'}</button>
         </form>
     );

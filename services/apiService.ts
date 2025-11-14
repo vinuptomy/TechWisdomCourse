@@ -38,53 +38,58 @@ export const getSession = async (): Promise<UserProfile | null> => {
         return null;
     }
 
-    return formatProfile(profileData, session.user.email!);
+    return formatProfile(profileData, session.user.email ?? '');
 };
 
 export const onAuthStateChange = (callback: (user: UserProfile | null) => void): (() => void) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-            // First, attempt to fetch the user's profile.
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .maybeSingle<Profile>();
-
-            if (profileError) {
-                console.error('Error fetching profile on auth change:', profileError.message);
-                callback(null);
-                return;
-            }
-
-            if (profileData) {
-                // Profile exists, format and return it.
-                callback(formatProfile(profileData, session.user.email!));
-            } else {
-                // Profile does not exist, but the user is authenticated.
-                // This can happen if the DB trigger failed. Let's create a profile now.
-                console.warn(`Profile not found for user ${session.user.id}. Creating a new one.`);
-                const userName = session.user.user_metadata?.name || 'New User';
-                const { data: newProfile, error: insertError } = await supabase
+        try {
+            if (session?.user) {
+                // First, attempt to fetch the user's profile.
+                const { data: profileData, error: profileError } = await supabase
                     .from('profiles')
-                    .insert({
-                        id: session.user.id,
-                        name: userName,
-                        avatar_url: session.user.user_metadata?.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(userName)}`,
-                    })
-                    .select()
-                    .single<Profile>();
-                
-                if (insertError) {
-                    console.error('Error creating profile for authenticated user:', insertError.message);
+                    .select('*')
+                    .eq('id', session.user.id)
+                    .maybeSingle<Profile>();
+
+                if (profileError) {
+                    console.error('Error fetching profile on auth change:', profileError.message);
                     callback(null);
-                } else {
-                    // Successfully created profile, format and return it.
-                    callback(formatProfile(newProfile, session.user.email!));
+                    return;
                 }
+
+                if (profileData) {
+                    // Profile exists, format and return it.
+                    callback(formatProfile(profileData, session.user.email ?? ''));
+                } else {
+                    // Profile does not exist, but the user is authenticated.
+                    // This can happen if the DB trigger failed. Let's create a profile now.
+                    console.warn(`Profile not found for user ${session.user.id}. Creating a new one.`);
+                    const userName = session.user.user_metadata?.name || 'New User';
+                    const { data: newProfile, error: insertError } = await supabase
+                        .from('profiles')
+                        .insert({
+                            id: session.user.id,
+                            name: userName,
+                            avatar_url: session.user.user_metadata?.avatar_url || `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(userName)}`,
+                        })
+                        .select()
+                        .single<Profile>();
+                    
+                    if (insertError) {
+                        console.error('Error creating profile for authenticated user:', insertError.message);
+                        callback(null);
+                    } else {
+                        // Successfully created profile, format and return it.
+                        callback(formatProfile(newProfile, session.user.email ?? ''));
+                    }
+                }
+            } else {
+                // No session, user is logged out.
+                callback(null);
             }
-        } else {
-            // No session, user is logged out.
+        } catch (error) {
+            console.error("Unhandled error in onAuthStateChange callback:", error);
             callback(null);
         }
     });
@@ -202,10 +207,9 @@ export const getCourseDetails = async (courseId: string): Promise<Course> => {
 
     const { data: modulesData, error: modulesError } = await supabase
         .from('modules')
-        .select('*, chapters(*, downloads:chapter_downloads(download:downloads(*)))')
+        .select('*, chapters(*, downloads:chapter_downloads(download:downloads(*))).order(position)')
         .eq('course_id', courseId)
-        .order('position', { ascending: true })
-        .order('position', { foreignTable: 'chapters', ascending: true });
+        .order('position', { ascending: true });
 
     if (modulesError) throw modulesError;
     
@@ -316,7 +320,7 @@ export const updateUserPlan = async (userId: string, plan: UserPlan): Promise<Us
         return null;
     }
 
-    return formatProfile(updatedProfile, session.user.email!);
+    return formatProfile(updatedProfile, session.user.email ?? '');
 };
 
 

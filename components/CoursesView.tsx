@@ -44,9 +44,14 @@ export const CoursesView: FC<{ currentUser: UserProfile; onSelectCourse: (course
     useEffect(() => {
         const fetchCourses = async () => {
             setLoading(true);
-            const fetchedCourses = await getCourses(debouncedSearchTerm);
-            setCourses(fetchedCourses);
-            setLoading(false);
+            try {
+                const fetchedCourses = await getCourses(debouncedSearchTerm);
+                setCourses(fetchedCourses);
+            } catch (error) {
+                console.error("Failed to fetch courses:", error);
+            } finally {
+                setLoading(false);
+            }
         };
         fetchCourses();
     }, [debouncedSearchTerm]);
