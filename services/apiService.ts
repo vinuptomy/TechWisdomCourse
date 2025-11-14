@@ -387,30 +387,20 @@ export const createModule = async (moduleData: { course_id: string; title: strin
 };
 
 export const createChapter = async (chapterData: { module_id: string; title: string; description: string; video_url: string; position: number; }): Promise<Chapter> => {
-    console.log('Creating chapter with data:', chapterData);
+    console.log('=== CHAPTER CREATION START ===');
+    console.log('Creating chapter with data:', JSON.stringify(chapterData, null, 2));
     
     // Validate required fields
+    console.log('Validating required fields...');
     if (!chapterData.module_id || !chapterData.title || !chapterData.video_url) {
+        console.error('Validation failed - missing required fields');
         throw new Error('Module ID, title, and video URL are required');
     }
+    console.log('✓ Validation passed');
     
-    // Verify user is admin before attempting insert (helps with RLS)
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-        throw new Error('You must be logged in to create chapters');
-    }
-    
-    const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-    
-    if (!profile || profile.role !== 'admin') {
-        throw new Error('Only admins can create chapters');
-    }
-    
-    console.log('User verified as admin, proceeding with chapter creation');
+    // Skip admin verification - let RLS policies handle it
+    // This prevents hanging on profile queries that might be slow
+    console.log('Skipping admin verification - RLS will handle permissions');
     
     // Prepare data - convert empty strings to null for optional fields
     const insertData = {
@@ -421,112 +411,67 @@ export const createChapter = async (chapterData: { module_id: string; title: str
         position: chapterData.position
     };
     
-    console.log('Inserting chapter with prepared data:', insertData);
+    console.log('Inserting chapter with prepared data:', JSON.stringify(insertData, null, 2));
     
     try {
         console.log('Calling Supabase insert for chapter...');
         
-        // Use retry logic manually since Supabase returns {data, error} instead of throwing
-        let lastError: any = null;
-        let result: any = null;
-        const maxRetries = 3;
+        // Simplified approach - single attempt with timeout
+        // If it fails, RLS will reject it with a clear error
+        const timeoutMs = 15000; // 15 second timeout
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => {
+                console.error('❌ Chapter insert TIMEOUT after', timeoutMs, 'ms');
+                reject(new Error(`Chapter insert timeout after ${timeoutMs/1000} seconds. The request may be blocked by RLS policies or network issues.`));
+            }, timeoutMs)
+        );
         
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-            try {
-                console.log(`Chapter insert attempt ${attempt + 1}/${maxRetries}...`);
-                
-                // Add timeout to prevent hanging
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Chapter insert timeout after 10 seconds')), 10000)
-                );
-                
-                const insertPromise = supabase.from('chapters').insert(insertData).select().single();
-                const response = await Promise.race([insertPromise, timeoutPromise]) as any;
-                
-                console.log('Supabase response received:', {
-                    hasData: !!response?.data,
-                    hasError: !!response?.error,
-                    errorCode: response?.error?.code,
-                    errorMessage: response?.error?.message,
-                    fullResponse: response
-                });
-                
-                if (response.error) {
-                    console.error('Full error object:', JSON.stringify(response.error, null, 2));
-                    lastError = response.error;
-                    console.error(`Attempt ${attempt + 1} failed:`, response.error);
-                    
-                    // Don't retry on certain errors
-                    if (response.error.code === '23505' || response.error.code === '23503') {
-                        throw response.error; // Unique constraint or foreign key - don't retry
-                    }
-                    
-                    // If it's an auth error, try to refresh token
-                    if (response.error.status === 401 || response.error.message?.includes('JWT') || response.error.message?.includes('token')) {
-                        console.log('Auth error detected, refreshing token...');
-                        const { data: { session } } = await supabase.auth.getSession();
-                        if (session) {
-                            const { error: refreshError } = await supabase.auth.refreshSession();
-                            if (refreshError) {
-                                console.error('Token refresh failed:', refreshError);
-                                await supabase.auth.signOut();
-                                throw new Error('Session expired. Please log in again.');
-                            }
-                        }
-                    }
-                    
-                    // If not last attempt, wait and retry
-                    if (attempt < maxRetries - 1) {
-                        const delay = 1000 * (attempt + 1);
-                        console.log(`Retrying in ${delay}ms...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        continue;
-                    }
-                } else {
-                    result = response;
-                    break; // Success, exit retry loop
-                }
-            } catch (err: any) {
-                lastError = err;
-                if (err.code === '23505' || err.code === '23503') {
-                    throw err; // Don't retry on constraint violations
-                }
-                if (attempt < maxRetries - 1) {
-                    const delay = 1000 * (attempt + 1);
-                    await new Promise(resolve => setTimeout(resolve, delay));
-                    continue;
-                }
-            }
-        }
+        console.log('Starting insert with', timeoutMs, 'ms timeout...');
+        const insertPromise = supabase.from('chapters').insert(insertData).select().single();
         
-        // Check final result
-        if (result?.error) {
-            const error = result.error;
-            console.error('Error creating chapter after retries:', error);
-            console.error('Error details:', {
-                code: error.code,
-                message: error.message,
-                details: error.details,
-                hint: error.hint
-            });
+        const startTime = Date.now();
+        const response = await Promise.race([insertPromise, timeoutPromise]) as any;
+        const duration = Date.now() - startTime;
+        
+        console.log(`✓ Insert completed in ${duration}ms`);
+        
+        console.log('Supabase response received:', {
+            hasData: !!response?.data,
+            hasError: !!response?.error,
+            errorCode: response?.error?.code,
+            errorMessage: response?.error?.message
+        });
+        
+        if (response.error) {
+            console.error('❌ Insert failed with error:', JSON.stringify(response.error, null, 2));
             
             // Provide more helpful error messages
-            if (error.code === '23505') { // Unique constraint violation
+            if (response.error.code === '42501') {
+                // RLS policy violation
+                throw new Error('Permission denied. You must be an admin to create chapters. Please check your user role.');
+            }
+            if (response.error.code === '23505') {
+                // Unique constraint violation
                 throw new Error(`A chapter with position ${insertData.position} already exists in this module. Please choose a different position.`);
             }
-            if (error.code === '23503') { // Foreign key violation
+            if (response.error.code === '23503') {
+                // Foreign key violation
                 throw new Error('Invalid module ID. Please refresh the page and try again.');
             }
-            throw new Error(error.message || 'Failed to create chapter');
+            if (response.error.status === 401) {
+                throw new Error('Authentication failed. Please log in again.');
+            }
+            
+            throw new Error(response.error.message || 'Failed to create chapter. Please check the console for details.');
         }
         
-        if (!result?.data) {
-            console.error('No data returned from chapter creation. Result:', result);
-            throw new Error('Chapter creation returned no data. Please check your admin permissions and try again.');
+        if (!response?.data) {
+            console.error('❌ No data returned from chapter creation. Response:', response);
+            throw new Error('Chapter creation returned no data. This may be a RLS policy issue. Please check your admin permissions.');
         }
         
-        console.log('Chapter created successfully:', result.data);
-        return { ...result.data, downloads: [] };
+        console.log('✅ Chapter created successfully:', response.data);
+        return { ...response.data, downloads: [] };
     } catch (error: any) {
         console.error('Failed to create chapter:', error);
         console.error('Error type:', typeof error);
@@ -858,11 +803,20 @@ export const updateCommunity = async (
 
 // Delete Community
 export const deleteCommunity = async (communityId: string): Promise<void> => {
-    const { error } = await supabase
+    console.log('Deleting community:', communityId);
+    const timeoutMs = 10000;
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Delete community timeout after 10 seconds')), timeoutMs)
+    );
+    
+    const deletePromise = supabase
         .from('communities')
         .delete()
         .eq('id', communityId);
+    
+    const { error } = await Promise.race([deletePromise, timeoutPromise]) as any;
     if (error) throw error;
+    console.log('Community deleted successfully');
 };
 
 // Update Course
@@ -915,11 +869,20 @@ export const updateCourse = async (
 
 // Delete Course
 export const deleteCourse = async (courseId: string): Promise<void> => {
-    const { error } = await supabase
+    console.log('Deleting course:', courseId);
+    const timeoutMs = 10000;
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Delete course timeout after 10 seconds')), timeoutMs)
+    );
+    
+    const deletePromise = supabase
         .from('courses')
         .delete()
         .eq('id', courseId);
+    
+    const { error } = await Promise.race([deletePromise, timeoutPromise]) as any;
     if (error) throw error;
+    console.log('Course deleted successfully');
 };
 
 // Update Module
@@ -955,11 +918,20 @@ export const updateModule = async (
 
 // Delete Module
 export const deleteModule = async (moduleId: string): Promise<void> => {
-    const { error } = await supabase
+    console.log('Deleting module:', moduleId);
+    const timeoutMs = 10000;
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Delete module timeout after 10 seconds')), timeoutMs)
+    );
+    
+    const deletePromise = supabase
         .from('modules')
         .delete()
         .eq('id', moduleId);
+    
+    const { error } = await Promise.race([deletePromise, timeoutPromise]) as any;
     if (error) throw error;
+    console.log('Module deleted successfully');
 };
 
 // Update Chapter
@@ -997,11 +969,20 @@ export const updateChapter = async (
 
 // Delete Chapter
 export const deleteChapter = async (chapterId: string): Promise<void> => {
-    const { error } = await supabase
+    console.log('Deleting chapter:', chapterId);
+    const timeoutMs = 10000;
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Delete chapter timeout after 10 seconds')), timeoutMs)
+    );
+    
+    const deletePromise = supabase
         .from('chapters')
         .delete()
         .eq('id', chapterId);
+    
+    const { error } = await Promise.race([deletePromise, timeoutPromise]) as any;
     if (error) throw error;
+    console.log('Chapter deleted successfully');
 };
 
 // Update Download
@@ -1051,11 +1032,20 @@ export const updateDownload = async (
 
 // Delete Download
 export const deleteDownload = async (downloadId: string): Promise<void> => {
-    const { error } = await supabase
+    console.log('Deleting download:', downloadId);
+    const timeoutMs = 10000;
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Delete download timeout after 10 seconds')), timeoutMs)
+    );
+    
+    const deletePromise = supabase
         .from('downloads')
         .delete()
         .eq('id', downloadId);
+    
+    const { error } = await Promise.race([deletePromise, timeoutPromise]) as any;
     if (error) throw error;
+    console.log('Download deleted successfully');
 };
 
 // --- CHAPTER DOWNLOADS JUNCTION TABLE OPERATIONS ---

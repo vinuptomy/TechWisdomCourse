@@ -1,8 +1,40 @@
 -- Tech Wisdom Academy - Complete Database Schema
 -- This schema includes all tables, relationships, RLS policies, triggers, and RPC functions
+-- IMPORTANT: This schema drops all existing triggers and functions before recreating them
 
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ============================================
+-- DROP ALL EXISTING TRIGGERS AND FUNCTIONS
+-- ============================================
+
+-- Drop all triggers first (in a DO block to handle errors gracefully)
+DO $$ 
+BEGIN
+    -- Drop all updated_at triggers
+    DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+    DROP TRIGGER IF EXISTS update_communities_updated_at ON communities;
+    DROP TRIGGER IF EXISTS update_courses_updated_at ON courses;
+    DROP TRIGGER IF EXISTS update_modules_updated_at ON modules;
+    DROP TRIGGER IF EXISTS update_chapters_updated_at ON chapters;
+    DROP TRIGGER IF EXISTS update_downloads_updated_at ON downloads;
+    DROP TRIGGER IF EXISTS update_posts_updated_at ON posts;
+    DROP TRIGGER IF EXISTS update_comments_updated_at ON comments;
+    DROP TRIGGER IF EXISTS update_classrooms_updated_at ON classrooms;
+    
+    -- Drop auth trigger
+    DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Ignore errors if triggers don't exist
+        NULL;
+END $$;
+
+-- Drop all functions (CASCADE will drop dependent objects)
+DROP FUNCTION IF EXISTS get_posts_with_details(UUID) CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
+DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
 
 -- ============================================
 -- TABLES
@@ -213,45 +245,49 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to update updated_at timestamp
--- Drop all triggers first, then drop the function
--- This ensures clean recreation
-DO $$ 
-BEGIN
-    -- Drop all triggers that use this function
-    DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
-    DROP TRIGGER IF EXISTS update_communities_updated_at ON communities;
-    DROP TRIGGER IF EXISTS update_courses_updated_at ON courses;
-    DROP TRIGGER IF EXISTS update_modules_updated_at ON modules;
-    DROP TRIGGER IF EXISTS update_chapters_updated_at ON chapters;
-    DROP TRIGGER IF EXISTS update_downloads_updated_at ON downloads;
-    DROP TRIGGER IF EXISTS update_posts_updated_at ON posts;
-    DROP TRIGGER IF EXISTS update_comments_updated_at ON comments;
-    DROP TRIGGER IF EXISTS update_classrooms_updated_at ON classrooms;
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Ignore errors if triggers don't exist
-        NULL;
-END $$;
-
--- Now drop the function
-DROP FUNCTION IF EXISTS update_updated_at_column() CASCADE;
-
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
+DECLARE
+    col_exists boolean;
 BEGIN
-    -- Set updated_at to current timestamp
-    -- All tables with this trigger have the updated_at column
-    NEW.updated_at = NOW();
+    -- Check if updated_at column exists in the table
+    SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_schema = TG_TABLE_SCHEMA 
+        AND table_name = TG_TABLE_NAME 
+        AND column_name = 'updated_at'
+    ) INTO col_exists;
+    
+    -- Only update if column exists
+    IF col_exists THEN
+        NEW.updated_at := NOW();
+    END IF;
+    
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
+-- Function to auto-create profile on user signup
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, name, avatar_url)
+    VALUES (
+        NEW.id,
+        COALESCE(NEW.raw_user_meta_data->>'name', 'New User'),
+        COALESCE(
+            NEW.raw_user_meta_data->>'avatar_url',
+            'https://api.dicebear.com/8.x/initials/svg?seed=' || encode(COALESCE(NEW.raw_user_meta_data->>'name', NEW.email), 'escape')
+        )
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- ============================================
 -- TRIGGERS
 -- ============================================
-
--- Note: Triggers are already dropped in the DO block above before the function is dropped
--- Now we can safely create them
 
 -- Auto-update updated_at on profiles
 CREATE TRIGGER update_profiles_updated_at
@@ -308,22 +344,6 @@ CREATE TRIGGER update_classrooms_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Auto-create profile on user signup
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.profiles (id, name, avatar_url)
-    VALUES (
-        NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'name', 'New User'),
-        COALESCE(
-            NEW.raw_user_meta_data->>'avatar_url',
-            'https://api.dicebear.com/8.x/initials/svg?seed=' || encode(COALESCE(NEW.raw_user_meta_data->>'name', NEW.email), 'escape')
-        )
-    );
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW
@@ -346,6 +366,63 @@ ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE post_likes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE classrooms ENABLE ROW LEVEL SECURITY;
 ALTER TABLE classroom_communities ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist (to allow clean recreation)
+DO $$ 
+DECLARE
+    r RECORD;
+BEGIN
+    -- Drop all policies on all tables
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'DROP POLICY IF EXISTS "Users can view all profiles" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can update their own profile" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update any profile" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view communities" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert communities" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update communities" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete communities" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view courses" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert courses" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update courses" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete courses" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view modules" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert modules" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update modules" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete modules" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view chapters" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert chapters" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update chapters" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete chapters" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can update downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view chapter downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can insert chapter downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete chapter downloads" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view posts" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Authenticated users can create posts" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can update their own posts" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can delete their own posts" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete any post" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view comments" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Authenticated users can create comments" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can update their own comments" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can delete their own comments" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can delete any comment" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view post likes" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Authenticated users can like posts" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Users can unlike their own likes" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view classrooms" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can manage classrooms" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Anyone can view classroom communities" ON ' || quote_ident(r.tablename);
+        EXECUTE 'DROP POLICY IF EXISTS "Admins can manage classroom communities" ON ' || quote_ident(r.tablename);
+    END LOOP;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Ignore errors if policies don't exist
+        NULL;
+END $$;
 
 -- Profiles policies
 CREATE POLICY "Users can view all profiles"
