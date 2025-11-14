@@ -97,14 +97,30 @@ export const DownloadsView: FC<{ currentUser: UserProfile }> = ({ currentUser })
                                 <h3 className="text-lg font-bold text-text-primary">{download.title}</h3>
                                 <p className="text-sm text-text-secondary">{download.description}</p>
                             </div>
-                            <a 
-                                href={canAccessDownload(download) ? download.file_url : undefined} 
-                                download={canAccessDownload(download)}
-                                onClick={(e) => !canAccessDownload(download) && e.preventDefault()}
+                            <button
+                                onClick={() => {
+                                    if (!canAccessDownload(download)) return;
+                                    const fileUrl = download.file_url;
+                                    const fileExtension = fileUrl.split('.').pop()?.toLowerCase() || '';
+                                    
+                                    // Open in new tab for PDF and HTML files
+                                    if (fileExtension === 'pdf' || fileExtension === 'html' || fileExtension === 'htm') {
+                                        window.open(fileUrl, '_blank');
+                                    } else {
+                                        // Download for other file types (ZIP, Word, etc.)
+                                        const link = document.createElement('a');
+                                        link.href = fileUrl;
+                                        link.download = download.title;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                    }
+                                }}
+                                disabled={!canAccessDownload(download)}
                                 className={`px-5 py-2.5 text-white font-semibold rounded-lg flex items-center gap-2 flex-shrink-0 transition-colors ${canAccessDownload(download) ? 'bg-primary hover:bg-primary/90' : 'bg-gray-600 cursor-not-allowed'}`}
                             >
-                                <DownloadIcon className="w-5 h-5" /> Download
-                            </a>
+                                <DownloadIcon className="w-5 h-5" /> {canAccessDownload(download) ? 'Download' : 'Premium Only'}
+                            </button>
                         </div>
                     ))}
                 </div>

@@ -25,31 +25,50 @@ export default function App() {
 
     // Effect to check for active session on initial load
     useEffect(() => {
+        let isMounted = true;
         const checkSession = async () => {
             try {
-                const user = await getSession();
-                setCurrentUser(user);
+                // Add timeout to prevent infinite loading
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Session check timeout')), 10000)
+                );
+                
+                const sessionPromise = getSession();
+                const user = await Promise.race([sessionPromise, timeoutPromise]) as UserProfile | null;
+                
+                if (isMounted) {
+                    setCurrentUser(user);
+                }
             } catch (error) {
                 console.error("Failed to check session on initial load:", error);
-                // User will remain null, which is handled gracefully.
+                if (isMounted) {
+                    setCurrentUser(null);
+                }
             } finally {
-                setLoadingSession(false);
+                if (isMounted) {
+                    setLoadingSession(false);
+                }
             }
         };
         checkSession();
 
         // Listen for auth changes (login/logout)
         const unsubscribe = onAuthStateChange((user) => {
-            setCurrentUser(user);
-             if (!user) {
-                // Reset view on logout
-                setView('community');
-                setSelectedCourseId(null);
-                setSelectedClassroomId(null);
+            if (isMounted) {
+                setCurrentUser(user);
+                if (!user) {
+                    // Reset view on logout
+                    setView('community');
+                    setSelectedCourseId(null);
+                    setSelectedClassroomId(null);
+                }
             }
         });
 
-        return () => unsubscribe();
+        return () => {
+            isMounted = false;
+            unsubscribe();
+        };
     }, []);
 
     const handleSetView = (view: View) => {
@@ -90,7 +109,11 @@ export default function App() {
     if (loadingSession) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <p className="text-text-secondary">Loading Tech Wisdom...</p>
+                <div className="text-center">
+                    <p className="text-text-secondary mb-4">Loading Tech Wisdom...</p>
+                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="text-xs text-text-secondary mt-4">Checking connection...</p>
+                </div>
             </div>
         );
     }

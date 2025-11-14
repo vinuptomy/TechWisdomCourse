@@ -107,15 +107,35 @@ export const CourseDetailView: FC<{ courseId: string; onBack: () => void }> = ({
                      <div className="mt-6">
                         <h4 className="font-bold text-lg mb-3">Downloads for this chapter:</h4>
                         <div className="space-y-3">
-                        {selectedChapter.downloads.map(download => (
-                            <a href={download.file_url} download key={download.id} className="bg-surface p-3 rounded-lg border border-border flex items-center justify-between gap-4 hover:border-primary transition-colors">
-                                <div>
-                                    <p className="font-semibold text-text-primary">{download.title}</p>
-                                    <p className="text-sm text-text-secondary">{download.description}</p>
-                                </div>
-                                <DownloadIcon className="w-5 h-5 text-primary flex-shrink-0" />
-                            </a>
-                        ))}
+                        {selectedChapter.downloads.map(download => {
+                            const fileExtension = download.file_url.split('.').pop()?.toLowerCase() || '';
+                            const shouldOpenInNewTab = fileExtension === 'pdf' || fileExtension === 'html' || fileExtension === 'htm';
+                            
+                            return (
+                                <button
+                                    key={download.id}
+                                    onClick={() => {
+                                        if (shouldOpenInNewTab) {
+                                            window.open(download.file_url, '_blank');
+                                        } else {
+                                            const link = document.createElement('a');
+                                            link.href = download.file_url;
+                                            link.download = download.title;
+                                            document.body.appendChild(link);
+                                            link.click();
+                                            document.body.removeChild(link);
+                                        }
+                                    }}
+                                    className="w-full bg-surface p-3 rounded-lg border border-border flex items-center justify-between gap-4 hover:border-primary transition-colors text-left"
+                                >
+                                    <div>
+                                        <p className="font-semibold text-text-primary">{download.title}</p>
+                                        <p className="text-sm text-text-secondary">{download.description}</p>
+                                    </div>
+                                    <DownloadIcon className="w-5 h-5 text-primary flex-shrink-0" />
+                                </button>
+                            );
+                        })}
                         </div>
                     </div>
                 )}

@@ -112,11 +112,23 @@ export const Auth: FC = () => {
             if (isSigningUp) {
                 await signUp(email, password, name);
                 setShowConfirmationMessage(true);
+                setLoading(false);
             } else {
                 await signIn(email, password);
+                // After successful sign-in, the onAuthStateChange listener in App.tsx
+                // will update the currentUser state, which will hide this Auth component.
+                // Don't set loading to false immediately - let the parent component
+                // handle the state change. The component will unmount when currentUser
+                // is set in App.tsx via the onAuthStateChange callback.
+                // If the state change doesn't happen quickly, we'll clear loading as a fallback
+                setTimeout(() => {
+                    // Only clear loading if component is still mounted (auth state change didn't happen)
+                    setLoading(false);
+                }, 1500);
             }
         } catch (err: any) {
             resetAuthState();
+            setLoading(false);
             if (err.message.toLowerCase().includes('email not confirmed')) {
                  setError('Email not confirmed. Please check your inbox for a verification link.');
             } else if (err.message.toLowerCase().includes("could not find table 'public.profiles'")) {
@@ -124,8 +136,6 @@ export const Auth: FC = () => {
             } else {
                 setError(err.message);
             }
-        } finally {
-            setLoading(false);
         }
     };
     
